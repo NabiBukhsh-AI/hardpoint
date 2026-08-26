@@ -85,10 +85,13 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - name: Install the package with no extras and no dev group
+      - name: Install the package with no extras and no dev dependencies
         run: |
           uv venv --python 3.11 .venv-bare
-          uv pip install --python .venv-bare --no-group dev .
+          # `uv pip install .` installs the project and its base dependencies
+          # only: dependency groups are not part of the pip interface, and no
+          # extra is requested. That is exactly the bare environment wanted.
+          uv pip install --python .venv-bare .
       - name: Assert no optional dependency is installed
         run: .venv-bare/bin/python scripts/assert_bare_env.py
       - name: Import every hardpoint module
