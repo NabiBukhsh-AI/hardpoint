@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: ruff check
+        run: uv run ruff check --output-format=github
+      - name: ruff format --check
+        run: uv run ruff format --check
+
+  typecheck:
+    name: Type check (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run mypy --strict src/hardpoint
+
+  import-lint:
+    name: Layer rules (import-linter)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run lint-imports --verbose
+
+  test:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --frozen --python ${{ matrix.python-version }}
+      - name: pytest
+        run: >
+          uv run pytest
+          --cov=hardpoint
+          --cov-report=term-missing
+          --cov-report=xml
+      - name: Enforce coverage floor on core
+        run: uv run python scripts/check_coverage.py
+
+  bare-environment:
+    name: Bare-environment import (base dependencies only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install the package with no extras and no dev group
+        run: |
+          uv venv --python 3.11 .venv-bare
+          uv pip install --python .venv-bare --no-group dev .
+      - name: Assert no optional dependency is installed
+        run: .venv-bare/bin/python scripts/assert_bare_env.py
+      - name: Import every hardpoint module
+        run: .venv-bare/bin/python scripts/import_all.py

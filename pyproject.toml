@@ -1,0 +1,240 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hardpoint"
+dynamic = ["version"]
+description = "Contracts, runtime, ingestion and evaluation for production RAG and agentic systems."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "The hardpoint authors" }]
+keywords = ["rag", "llm", "retrieval", "embeddings", "agents", "evaluation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Application Frameworks",
+  "Typing :: Typed",
+]
+
+# [LOCKED] INSTRUCTIONS.md §1. The base install is exactly these five distributions.
+# Adding anything here requires architectural review.
+dependencies = [
+  "pydantic>=2.7",
+  "anyio>=4.3",
+  "httpx>=0.27",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/NabiBukhsh-AI/hardpoint"
+Repository = "https://github.com/NabiBukhsh-AI/hardpoint"
+Issues = "https://github.com/NabiBukhsh-AI/hardpoint/issues"
+Changelog = "https://github.com/NabiBukhsh-AI/hardpoint/blob/main/CHANGELOG.md"
+
+# The console script is declared in M1, when cli/main.py exists. Declaring it
+# now would install a `hardpoint` command that raises ModuleNotFoundError.
+# See docs/backlog.md -> "console script entry point".
+# [project.scripts]
+# hardpoint = "hardpoint.cli.main:app"
+
+# ARCHITECTURE.md §16.2. Extras are declared from day one so that the registry's
+# lazy table can name the exact install command in MissingDependencyError, even
+# before the corresponding adapter exists.
+[project.optional-dependencies]
+openai = ["openai>=1.30"]
+anthropic = ["anthropic>=0.28"]
+bedrock = ["boto3>=1.34"]
+vertex = ["google-cloud-aiplatform>=1.50"]
+ollama = ["ollama>=0.2"]
+qdrant = ["qdrant-client>=1.9"]
+pgvector = ["pgvector>=0.2", "asyncpg>=0.29"]
+pinecone = ["pinecone-client>=4.0"]
+weaviate = ["weaviate-client>=4.6"]
+chroma = ["chromadb>=0.5"]
+opensearch = ["opensearch-py>=2.6"]
+cohere = ["cohere>=5.5"]
+parsers = ["pypdf>=4.2", "python-docx>=1.1", "beautifulsoup4>=4.12"]
+otel = ["opentelemetry-api>=1.25", "opentelemetry-sdk>=1.25"]
+redis = ["redis>=5.0"]
+serve = ["fastapi>=0.111", "uvicorn>=0.30"]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "import-linter>=2.0",
+  "pytest>=8.2",
+  "pytest-cov>=5.0",
+  "types-pyyaml>=6.0",
+]
+
+[tool.hatch.version]
+path = "src/hardpoint/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hardpoint"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/hardpoint", "README.md", "CHANGELOG.md", "LICENSE"]
+
+# --------------------------------------------------------------------------- #
+# Lint and format                                                             #
+# --------------------------------------------------------------------------- #
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# README.md quotes composition snippets from ARCHITECTURE.md verbatim; the
+# formatter would expand them and defeat the "nine readable lines" point.
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+  "F",    # pyflakes
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "I",    # isort
+  "N",    # pep8-naming
+  "D",    # pydocstyle
+  "UP",   # pyupgrade
+  "ANN",  # flake8-annotations
+  "ASYNC",# flake8-async
+  "S",    # flake8-bandit
+  "B",    # flake8-bugbear
+  "A",    # flake8-builtins
+  "C4",   # flake8-comprehensions
+  "DTZ",  # flake8-datetimez
+  "T20",  # flake8-print  -- INSTRUCTIONS.md §12.4: no print outside cli
+  "PT",   # flake8-pytest-style
+  "RET",  # flake8-return
+  "SIM",  # flake8-simplify
+  "TID",  # flake8-tidy-imports
+  "ARG",  # flake8-unused-arguments
+  "PTH",  # flake8-use-pathlib
+  "PL",   # pylint
+  "TRY",  # tryceratops
+  "PERF", # perflint
+  "RUF",  # ruff-specific
+]
+ignore = [
+  "D203",    # incompatible with D211
+  "D213",    # incompatible with D212
+  "ANN401",  # explicit Any is allowed at documented dynamic boundaries (§12.1)
+  "PLR0913", # constructor arity is a design choice, reviewed by hand
+  "TRY003",  # long messages inside raise are required by the error-message standard
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101", "ANN", "PLR2004", "ARG001", "ARG002", "SLF001"]
+"src/hardpoint/testing/**" = ["S101"] # contract kits assert; that is their job
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+# --------------------------------------------------------------------------- #
+# Type checking                                                               #
+# --------------------------------------------------------------------------- #
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src/hardpoint"]
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+warn_no_return = true
+disallow_any_unimported = true
+show_error_codes = true
+enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pydantic-mypy]
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# --------------------------------------------------------------------------- #
+# Tests                                                                       #
+# --------------------------------------------------------------------------- #
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Integration tests are excluded by default (INSTRUCTIONS.md 12.2); run them
+# with `pytest -m integration`.
+addopts = "--strict-markers --strict-config -ra -m 'not integration'"
+markers = [
+  "integration: touches a real external system; excluded by default (INSTRUCTIONS.md §12.2)",
+  "contract: a port conformance suite",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["hardpoint"]
+branch = true
+parallel = true
+
+[tool.coverage.paths]
+source = ["src/hardpoint", "*/site-packages/hardpoint"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "@overload",
+  "\\.\\.\\.$",
+  "raise NotImplementedError",
+]
+
+# --------------------------------------------------------------------------- #
+# Layer enforcement -- [LOCKED] INSTRUCTIONS.md §3, reproduced verbatim.       #
+# --------------------------------------------------------------------------- #
+
+[tool.importlinter]
+root_package = "hardpoint"
+
+[[tool.importlinter.contracts]]
+name = "core is independent"
+type = "forbidden"
+source_modules = ["hardpoint.core"]
+forbidden_modules = ["hardpoint.runtime", "hardpoint.retrieval", "hardpoint.generation",
+                     "hardpoint.ingestion", "hardpoint.guards", "hardpoint.agents",
+                     "hardpoint.eval", "hardpoint.adapters", "hardpoint.cli",
+                     "hardpoint.recipes", "hardpoint.observability"]
+
+[[tool.importlinter.contracts]]
+name = "domain modules never import adapters"
+type = "forbidden"
+source_modules = ["hardpoint.runtime", "hardpoint.retrieval", "hardpoint.generation",
+                  "hardpoint.ingestion", "hardpoint.guards", "hardpoint.agents",
+                  "hardpoint.eval", "hardpoint.recipes", "hardpoint.testing"]
+forbidden_modules = ["hardpoint.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "adapters are leaves"
+type = "forbidden"
+source_modules = ["hardpoint.adapters"]
+forbidden_modules = ["hardpoint.runtime", "hardpoint.retrieval", "hardpoint.generation",
+                     "hardpoint.ingestion", "hardpoint.guards", "hardpoint.agents",
+                     "hardpoint.eval", "hardpoint.cli", "hardpoint.recipes"]
+
+[[tool.importlinter.contracts]]
+name = "testing stays light"
+type = "forbidden"
+source_modules = ["hardpoint.testing"]
+forbidden_modules = ["hardpoint.adapters", "hardpoint.cli"]
