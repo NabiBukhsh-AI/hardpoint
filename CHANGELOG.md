@@ -19,5 +19,18 @@ carries a migration note here.
 - CI workflow running lint, format check, strict type check, import-lint and
   tests on Python 3.11, 3.12 and 3.13, plus a bare-environment import job.
 - `hardpoint.__version__` and `hardpoint.CONTRACT_VERSION`.
+- `core.types`: `JsonValue`, `ModelId`, `RunId`.
+- `core.errors`: the exception taxonomy from ARCHITECTURE.md §18.1. Every error
+  carries a code and renders what failed, where, why and what to do next; every
+  `ConfigError` requires a remedy, enforced against the constructor signature.
+- `core.ids`: deterministic `document_id`, `chunk_id`, `content_hash`,
+  `text_hash`, `stable_hash` and `normalise_text`, with a golden fixture and an
+  independently written reference implementation in the tests.
+- `core.filters`: the closed, serialisable metadata filter tree with the `F`
+  builder, normative operator semantics in `matches`, and `validate_supported`
+  raising `UnsupportedFilterError` rather than dropping a clause.
+- `core.capabilities`: `ModelCapabilities` and `IndexCapabilities`, with
+  `require` failing at composition time.
+- `core.models`: the boundary data models, frozen and `extra="forbid"`.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

@@ -1,0 +1,265 @@
+{
+  "_comment": "Golden fixture for hardpoint.core.ids. Regenerating this file changes every identifier in every existing index. See scripts/regenerate_id_fixtures.py before touching it.",
+  "normalise_text": [
+    {
+      "text": "",
+      "expected": ""
+    },
+    {
+      "text": "hello",
+      "expected": "hello"
+    },
+    {
+      "text": "  leading and trailing  ",
+      "expected": "leading and trailing"
+    },
+    {
+      "text": "collapse\t\tinner\n\nwhitespace",
+      "expected": "collapse inner whitespace"
+    },
+    {
+      "text": "non breaking space",
+      "expected": "non breaking space"
+    },
+    {
+      "text": "ﬁ ligature and ４ fullwidth digit",
+      "expected": "fi ligature and 4 fullwidth digit"
+    },
+    {
+      "text": "café",
+      "expected": "café"
+    },
+    {
+      "text": "café",
+      "expected": "café"
+    },
+    {
+      "text": "ünïcödé mixed em space",
+      "expected": "ünïcödé mixed em space"
+    },
+    {
+      "text": "line\r\nendings\rvary",
+      "expected": "line endings vary"
+    }
+  ],
+  "document_id": [
+    {
+      "source_id": "docs",
+      "source_uri": "guide.md",
+      "expected": "doc_56ae7843abfbc8fd734302e1"
+    },
+    {
+      "source_id": "docs",
+      "source_uri": "guide.md#section",
+      "expected": "doc_d991b535c673d83de15cf279"
+    },
+    {
+      "source_id": "docs",
+      "source_uri": "a/b.md",
+      "expected": "doc_731b4f4fd7db461a59b9bffd"
+    },
+    {
+      "source_id": "handbook",
+      "source_uri": "guide.md",
+      "expected": "doc_6ab14a998ed62ca576f11635"
+    },
+    {
+      "source_id": "a",
+      "source_uri": "bc",
+      "expected": "doc_e7a1d613d8f9c82a7eb02bec"
+    },
+    {
+      "source_id": "ab",
+      "source_uri": "c",
+      "expected": "doc_6840c05e4409ff619277f676"
+    },
+    {
+      "source_id": "",
+      "source_uri": "",
+      "expected": "doc_a86b56029f2818e0911d300b"
+    },
+    {
+      "source_id": "docs",
+      "source_uri": "文書.md",
+      "expected": "doc_930a605767cb8b493019c0e0"
+    }
+  ],
+  "chunk_id": [
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 0,
+      "text": "hello world",
+      "expected": "chk_f3584cb1b035eb8388a6e927"
+    },
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 1,
+      "text": "hello world",
+      "expected": "chk_8cd594c1c3621c422879eadc"
+    },
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 0,
+      "text": "  hello   world  ",
+      "expected": "chk_f3584cb1b035eb8388a6e927"
+    },
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 0,
+      "text": "hello worlds",
+      "expected": "chk_415c45c1b80b8de448a2de6a"
+    },
+    {
+      "document_id": "doc_111111111111111111111111",
+      "index": 0,
+      "text": "hello world",
+      "expected": "chk_b91290a742cd8f51bfb34e81"
+    },
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 42,
+      "text": "",
+      "expected": "chk_2bddd6f4b156104081501c3d"
+    },
+    {
+      "document_id": "doc_000000000000000000000000",
+      "index": 0,
+      "text": "ünïcödé chunk",
+      "expected": "chk_0787ea4bd08b3418b44d6b5a"
+    }
+  ],
+  "content_hash": [
+    {
+      "data_hex": "",
+      "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "data_hex": "68656c6c6f20776f726c64",
+      "expected": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    },
+    {
+      "data_hex": "000102",
+      "expected": "ae4b3280e56e2faf83f414a6e3dabe9d5fbe18976544c05fed121accb85b53fc"
+    },
+    {
+      "data_hex": "636166c3a9",
+      "expected": "850f7dc43910ff890f8879c0ed26fe697c93a067ad93a7d50f466a7028a9bf4e"
+    }
+  ],
+  "text_hash": [
+    {
+      "text": "",
+      "expected": "45f9cf992a64749562fd81b7a4ec68167947fbbf138ff4461c5e3fb0599942d9"
+    },
+    {
+      "text": "hello",
+      "expected": "faa3ed92a5b8122de9af0ace53f2a18788791e1fcae4b3d437092f8f7fa628b7"
+    },
+    {
+      "text": "  leading and trailing  ",
+      "expected": "a9a73be2ffffa0f574780a00ee468fb9ebcc4a5a8301a1c5059b174c0dfb052f"
+    },
+    {
+      "text": "collapse\t\tinner\n\nwhitespace",
+      "expected": "9860e982f5039bf6162f0792705964535c5752f4c9feb86640384ff9e23650f7"
+    },
+    {
+      "text": "non breaking space",
+      "expected": "c789dc60c7d1cd9687f7cca7dac4a827999d944d0bc9a9ba2cb3f15f2c66a31b"
+    },
+    {
+      "text": "ﬁ ligature and ４ fullwidth digit",
+      "expected": "01f4ac5c5f888304385badb50e3ff4c08dffc4e2c33a7f0d63dce2124d016d31"
+    },
+    {
+      "text": "café",
+      "expected": "489344d01b2d47c8739b1e4a1b49e7a583c4f126bc821e55f5f2bc6ba568bc2c"
+    },
+    {
+      "text": "café",
+      "expected": "489344d01b2d47c8739b1e4a1b49e7a583c4f126bc821e55f5f2bc6ba568bc2c"
+    },
+    {
+      "text": "ünïcödé mixed em space",
+      "expected": "32ec83c615968033e26d00a7215ba27f6c71850b1bb0ffe959b2594a9bf11d9d"
+    },
+    {
+      "text": "line\r\nendings\rvary",
+      "expected": "f1607eadcf185cfdd3f7ed3980c6873193a6ae3533b67154dbe392653e2519ed"
+    }
+  ],
+  "stable_hash": [
+    {
+      "value": null,
+      "expected": "0f63a29a5dbcbe233ab2eb3c7f77dca2c6f60070a0533e37a680e498691ad77a"
+    },
+    {
+      "value": true,
+      "expected": "8487c05ce1caf0794bf2fc60bb31e51bf4474072bddc98a262e7be4de78b3968"
+    },
+    {
+      "value": 0,
+      "expected": "2b9048a0077ef0352fa62909ddc263e81a7ab0f81bab2f666a32eac2792a712b"
+    },
+    {
+      "value": 1,
+      "expected": "42810b406cb2def7f3a64008a13d05e9680a9a3eab081fb8888950419af44d48"
+    },
+    {
+      "value": 1.0,
+      "expected": "54495a3b6270693afdae21ddd3465b581b15f704d09e0c4571709bf59aedfd18"
+    },
+    {
+      "value": "",
+      "expected": "b85db8cb88130197ddfb606abeb17cc9fb561c79c278d2123ea4cb6a1b7e8644"
+    },
+    {
+      "value": "hello",
+      "expected": "3425f029a12b5563da7c80142c701514242d30d703dc55e5664fbe5998af3988"
+    },
+    {
+      "value": [],
+      "expected": "1af9670dfa8f583c2116d9a766d6e3b64698693cbe99cf5a984c99948e27fddd"
+    },
+    {
+      "value": [
+        1,
+        2,
+        3
+      ],
+      "expected": "8736ed523c48a72934cc4df3bc487e4263eebc9e14fa5ee43a249a1a0c1b29a1"
+    },
+    {
+      "value": {},
+      "expected": "ebfa63c0550cf12a2cd9903a0996c23154e9246ada407668d875fa1195fd13c0"
+    },
+    {
+      "value": {
+        "a": 1,
+        "b": 2
+      },
+      "expected": "de1b9fa3bec93942f2c4004d7641444a79aff3b7210372c13df1f2c3ae9db703"
+    },
+    {
+      "value": {
+        "b": 2,
+        "a": 1
+      },
+      "expected": "de1b9fa3bec93942f2c4004d7641444a79aff3b7210372c13df1f2c3ae9db703"
+    },
+    {
+      "value": {
+        "nested": {
+          "z": [
+            1,
+            {
+              "y": null
+            }
+          ],
+          "a": "café"
+        }
+      },
+      "expected": "c94beb33d46458f84bc7bfcfecaa23de68444850ef684e0483a7b4cb72e53b42"
+    }
+  ]
+}

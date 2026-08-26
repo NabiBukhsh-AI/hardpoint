@@ -108,13 +108,22 @@ def test_no_optional_dependency_is_imported_at_module_import_time() -> None:
 def test_importing_hardpoint_has_no_side_effects() -> None:
     """Importing the package opens no sockets and reads no environment.
 
-    Asserted in a subprocess with ``socket`` and ``os.environ`` instrumented
-    before ``hardpoint`` is imported, so nothing the test session already did can
-    mask a violation.
+    ARCHITECTURE.md §5.3. Run in a subprocess with ``socket`` and ``os.environ``
+    instrumented *before* ``hardpoint`` is imported, so nothing the test session
+    already did can mask a violation.
+
+    Environment reads are attributed to their immediate caller. CPython's
+    ``site`` module and pydantic's own ``PYDANTIC_DISABLE_PLUGINS`` kill-switch
+    both read the environment during any import, and neither is hardpoint
+    reading configuration. Attribution keeps the assertion about the rule that
+    was actually written down: a ``hardpoint`` module must not reach for an API
+    key, a region, or an endpoint at import time. Any socket at all is a
+    violation regardless of who opened it, so sockets are not attributed.
     """
     program = textwrap.dedent(
         """
-        import builtins, json, os, socket, sys
+        import json, os, socket, sys
+        from pathlib import Path
 
         violations = []
 
@@ -130,18 +139,31 @@ def test_importing_hardpoint_has_no_side_effects() -> None:
             return real_create(address, *a, **k)
         socket.create_connection = guarded_create
 
+        import hardpoint
+        package_dir = str(Path(hardpoint.__file__).resolve().parent)
+
+        def caller_is_hardpoint():
+            frame = sys._getframe(2)
+            filename = frame.f_code.co_filename
+            try:
+                resolved = str(Path(filename).resolve())
+            except (OSError, ValueError):
+                return False
+            return resolved.startswith(package_dir)
+
         class WatchedEnviron(dict):
             def __getitem__(self, key):
-                violations.append(f"os.environ[{key!r}]")
+                if caller_is_hardpoint():
+                    violations.append(f"os.environ[{key!r}]")
                 return super().__getitem__(key)
             def get(self, key, default=None):
-                violations.append(f"os.environ.get({key!r})")
+                if caller_is_hardpoint():
+                    violations.append(f"os.environ.get({key!r})")
                 return super().get(key, default)
         os.environ = WatchedEnviron(os.environ)
 
         import importlib, pkgutil
-        package = importlib.import_module("hardpoint")
-        for info in pkgutil.walk_packages(package.__path__, prefix="hardpoint."):
+        for info in pkgutil.walk_packages(hardpoint.__path__, prefix="hardpoint."):
             importlib.import_module(info.name)
 
         print(json.dumps(violations))
@@ -156,4 +178,60 @@ def test_importing_hardpoint_has_no_side_effects() -> None:
     violations = result.stdout.strip().splitlines()[-1]
     assert violations == "[]", (
         f"Importing hardpoint had side effects, violating ARCHITECTURE.md 5.3: {violations}"
+    )
+
+
+def test_the_side_effect_detector_actually_detects() -> None:
+    """The attribution in the previous test must not make it unfalsifiable.
+
+    A test that can only pass is worse than no test. This plants a module inside
+    the installed package that reads the environment at import time, and asserts
+    the detector reports it.
+    """
+    program = textwrap.dedent(
+        """
+        import json, os, sys
+        from pathlib import Path
+
+        import hardpoint
+        package_dir = str(Path(hardpoint.__file__).resolve().parent)
+        planted = Path(package_dir) / "_side_effect_probe.py"
+        planted.write_text("import os\\nos.environ.get('HARDPOINT_PROBE')\\n")
+
+        violations = []
+
+        def caller_is_hardpoint():
+            frame = sys._getframe(2)
+            try:
+                resolved = str(Path(frame.f_code.co_filename).resolve())
+            except (OSError, ValueError):
+                return False
+            return resolved.startswith(package_dir)
+
+        class WatchedEnviron(dict):
+            def get(self, key, default=None):
+                if caller_is_hardpoint():
+                    violations.append(f"os.environ.get({key!r})")
+                return super().get(key, default)
+        os.environ = WatchedEnviron(os.environ)
+
+        try:
+            import importlib
+            importlib.import_module("hardpoint._side_effect_probe")
+        finally:
+            planted.unlink()
+
+        print(json.dumps(violations))
+        """
+    )
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    reported = result.stdout.strip().splitlines()[-1]
+    assert "HARDPOINT_PROBE" in reported, (
+        "The side-effect detector failed to notice a hardpoint module reading the "
+        f"environment at import time, so it cannot be trusted. Got: {reported}"
     )

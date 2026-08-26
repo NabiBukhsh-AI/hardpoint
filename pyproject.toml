@@ -130,6 +130,7 @@ select = [
 ignore = [
   "D203",    # incompatible with D211
   "D213",    # incompatible with D212
+  "D107",    # Google style documents constructor args in the class docstring
   "ANN401",  # explicit Any is allowed at documented dynamic boundaries (§12.1)
   "PLR0913", # constructor arity is a design choice, reviewed by hand
   "TRY003",  # long messages inside raise are required by the error-message standard
@@ -138,6 +139,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D", "S101", "ANN", "PLR2004", "ARG001", "ARG002", "SLF001"]
 "src/hardpoint/testing/**" = ["S101"] # contract kits assert; that is their job
+# These two files exist to exercise Unicode normalisation, so they contain
+# NBSP, em space and fullwidth digits on purpose. RUF001 would flag exactly
+# the characters under test.
+"tests/unit/core/test_ids.py" = ["RUF001"]
+"scripts/regenerate_id_fixtures.py" = ["RUF001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
