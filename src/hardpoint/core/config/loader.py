@@ -179,13 +179,21 @@ def _deep_merge(
         existing = result.get(key)
         if isinstance(value, dict) and isinstance(existing, dict):
             result[key] = _deep_merge(existing, value, layer, origins, path)
+            continue
+
+        # Wholesale replacement. Any origin recorded for a path *under* this one
+        # now describes a key that no longer exists, and `config show` would
+        # print it as though it were live. Purge before recording the new one.
+        if isinstance(existing, dict):
+            for stale in [p for p in origins if p == path or p.startswith(f"{path}.")]:
+                del origins[stale]
+
+        result[key] = value
+        if isinstance(value, dict):
+            for leaf, _ in flatten(value, path):
+                origins[leaf] = layer
         else:
-            result[key] = value
-            if isinstance(value, dict):
-                for leaf, _ in flatten(value, path):
-                    origins[leaf] = layer
-            else:
-                origins[path] = layer
+            origins[path] = layer
     return result
 
 
@@ -211,14 +219,35 @@ def parse_env_overrides(environ: Mapping[str, str]) -> dict[str, JsonValue]:
     overrides: dict[str, JsonValue] = {}
     claimed: dict[str, str] = {}
 
-    for name in sorted(environ):
+    # Sorted by the *resolved* path, not by the raw variable name. Section names
+    # are case-insensitive, so sorting by the raw name lets HARDPOINT__A__B__C
+    # be processed before hardpoint__a__b, at which point the shorter variable
+    # overwrites the section the longer one built -- silently, and in the
+    # direction that loses configuration rather than reporting a conflict.
+    # Sorting by the lowercased path makes a prefix always come first, which is
+    # what the conflict detection below relies on.
+    entries: list[tuple[tuple[str, ...], str]] = []
+    for name in environ:
         if not name.upper().startswith(f"{ENV_PREFIX}{ENV_SEPARATOR}"):
             continue
         remainder = name[len(ENV_PREFIX) + len(ENV_SEPARATOR) :]
-        parts = [part.lower() for part in remainder.split(ENV_SEPARATOR) if part]
-        if not parts:
-            continue
+        parts = tuple(part.lower() for part in remainder.split(ENV_SEPARATOR) if part)
+        if parts:
+            entries.append((parts, name))
+    entries.sort()
 
+    def conflict(name: str, path: str, at: str) -> InvalidConfigError:
+        return InvalidConfigError(
+            f"Environment override {name} sets {path!r}, but {at!r} was already "
+            f"claimed by {claimed.get(at, 'another variable')}.",
+            config_path=path,
+            remedy=(
+                "Unset one of the two variables. A configuration path cannot be "
+                "both a value and a section."
+            ),
+        )
+
+    for parts, name in entries:
         path = ".".join(parts)
         try:
             value = yaml.safe_load(environ[name])
@@ -230,20 +259,16 @@ def parse_env_overrides(environ: Mapping[str, str]) -> dict[str, JsonValue]:
             branch = node.get(part)
             if not isinstance(branch, dict):
                 if branch is not None:
-                    conflict = ".".join(parts[: index + 1])
-                    raise InvalidConfigError(
-                        f"Environment override {name} sets {path!r}, but "
-                        f"{conflict!r} was already set to a scalar by "
-                        f"{claimed.get(conflict, 'another variable')}.",
-                        config_path=path,
-                        remedy=(
-                            "Unset one of the two variables. A path cannot be both a "
-                            "value and a section."
-                        ),
-                    )
+                    raise conflict(name, path, ".".join(parts[: index + 1]))
                 branch = {}
                 node[part] = branch
             node = branch
+
+        # A section already stands here, so this variable would replace it with
+        # a scalar. Refusing is the whole point: the alternative is losing every
+        # setting underneath it without a word.
+        if isinstance(node.get(parts[-1]), dict):
+            raise conflict(name, path, path)
 
         node[parts[-1]] = value
         claimed[path] = name

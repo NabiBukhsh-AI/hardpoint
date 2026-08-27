@@ -612,3 +612,58 @@ def test_fixtures_produce_real_models() -> None:
     assert isinstance(build_chunk(), Chunk)
     assert isinstance(build_chunk().span, CharSpan)
     assert isinstance(build_retrieved(build_chunks(["a"]))[0], RetrievedChunk)
+
+
+# --------------------------------------------------------------------------- #
+# Regressions                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.anyio
+async def test_concurrent_spans_nest_under_their_real_parent() -> None:
+    """Regression: the tracer kept one shared list as its span stack.
+
+    With two tasks interleaving at an await, that produced a plausible-looking
+    but entirely wrong tree -- one branch's span became a child of the other's,
+    and the second branch's child nested under the first branch's child. Every
+    tracing assertion written against it would have passed while proving
+    nothing, which is the worst kind of broken test double.
+
+    Parallel retrieval is the case this exists for: two retrievers under one
+    pipeline span must each nest under the pipeline, not under each other.
+    """
+    import anyio
+
+    tracer = RecordingTracer()
+
+    async def branch(name: str) -> None:
+        async with tracer.span(f"retrieve.{name}"):
+            await anyio.sleep(0.01)  # forces the tasks to interleave
+            async with tracer.span(f"embed.{name}"):
+                await anyio.sleep(0.01)
+
+    async with tracer.span("hardpoint.pipeline"), anyio.create_task_group() as group:
+        group.start_soon(branch, "dense")
+        group.start_soon(branch, "sparse")
+
+    assert len(tracer.roots) == 1, "only the pipeline span is a root"
+    pipeline = tracer.roots[0]
+    assert sorted(c.name for c in pipeline.children) == ["retrieve.dense", "retrieve.sparse"]
+
+    for retriever in pipeline.children:
+        suffix = retriever.name.split(".", 1)[1]
+        assert [c.name for c in retriever.children] == [f"embed.{suffix}"], (
+            f"{retriever.name} adopted a sibling's child"
+        )
+
+
+@pytest.mark.anyio
+async def test_the_span_stack_does_not_leak_between_sequential_runs() -> None:
+    """A span opened and closed must not leave the next one nested under it."""
+    tracer = RecordingTracer()
+    async with tracer.span("first"):
+        pass
+    async with tracer.span("second"):
+        pass
+    assert [root.name for root in tracer.roots] == ["first", "second"]
+    assert tracer.roots[0].children == []

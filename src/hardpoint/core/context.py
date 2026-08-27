@@ -149,11 +149,13 @@ class Deadline:
         """
         if not self.expired():
             return
+        # `at` is not None here: expired() is false for an unbounded deadline.
+        overdue = time.monotonic() - (self.at or 0.0)
         raise BudgetExceeded(
-            "The run exceeded its deadline before this step could start.",
+            f"The run passed its deadline {overdue:.3f}s ago, before this step could start.",
             limit="deadline_s",
             limit_value=0.0,
-            observed=0.0,
+            observed=overdue,
             step=step,
             run_id=run_id,
             remedy=(

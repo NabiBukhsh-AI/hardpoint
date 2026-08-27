@@ -42,7 +42,7 @@ same rule every optional dependency follows.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from hardpoint.core.errors import AuthError, MissingDependencyError, UnsupportedFilterError
@@ -510,8 +510,3 @@ def vector_index_contract(
         return VectorIndexContractWithAuth
 
     return VectorIndexContract
-
-
-def contract_record_ids() -> Sequence[str]:
-    """The ids the kit's fixture corpus uses, for a caller arranging cleanup."""
-    return tuple(record.id for record in _records())

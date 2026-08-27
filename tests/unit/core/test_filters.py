@@ -270,3 +270,45 @@ def test_operator_sets_are_disjoint_and_complete() -> None:
     assert COMPARISON_OPS.isdisjoint(STRUCTURAL_OPS)
     assert len(COMPARISON_OPS) == 9
     assert len(STRUCTURAL_OPS) == 4
+
+
+# --------------------------------------------------------------------------- #
+# String ordering                                                             #
+# --------------------------------------------------------------------------- #
+#
+# Documented in the module docstring but previously never executed by a test.
+# Untested documented behaviour is the kind that quietly stops being true.
+
+
+@pytest.mark.parametrize(
+    ("operator", "value", "expected"),
+    [
+        ("gt", "apple", True),
+        ("gt", "zebra", False),
+        ("gt", "banana", False),
+        ("gte", "banana", True),
+        ("lt", "cherry", True),
+        ("lt", "apple", False),
+        ("lte", "banana", True),
+        ("lte", "apple", False),
+    ],
+)
+def test_strings_order_lexicographically(operator: str, value: str, expected: bool) -> None:
+    """``gt``/``lt`` and friends order strings, not just numbers."""
+    expression = getattr(F.field("title"), operator)(value)
+    assert matches(expression, {"title": "banana"}) is expected
+
+
+def test_string_ordering_is_case_sensitive() -> None:
+    """Uppercase sorts before lowercase, as it does everywhere else in Python.
+
+    Stated rather than assumed: a backend that lower-cased before comparing
+    would disagree with this reference implementation, and the contract kit
+    compares the two.
+    """
+    assert matches(F.field("t").lt("a"), {"t": "Z"}) is True
+
+
+def test_numbers_and_strings_do_not_order_against_each_other() -> None:
+    assert matches(F.field("year").gt("2020"), {"year": 2024}) is False
+    assert matches(F.field("title").gt(5), {"title": "banana"}) is False

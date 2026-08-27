@@ -1076,7 +1076,3 @@ def _rebuild_models() -> None:
 
 
 _rebuild_models()
-
-# Referenced only under TYPE_CHECKING above, but named here so that a reader
-# grepping for what this module depends on finds them.
-_TYPE_ONLY: tuple[str, ...] = ("RunContext", "ModelCapabilities", "IndexCapabilities")

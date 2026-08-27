@@ -593,3 +593,105 @@ def test_json_schema_can_be_generated() -> None:
     generated = HardpointConfig.model_json_schema()
     assert generated["title"] == "HardpointConfig"
     assert "retrieval" in generated["properties"]
+
+
+# --------------------------------------------------------------------------- #
+# Regressions                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+def test_get_on_a_parent_path_does_not_leak_a_nested_secret() -> None:
+    """Regression: ``get`` checked whether *this* path was secret.
+
+    That left ``get("indexes.primary")`` returning the section as a raw dict
+    with a live API key inside it -- a leak through the accessor documented as
+    the safe one, reachable from any code that reads a whole config section.
+    """
+    snapshot = resolved_with_secret().snapshot
+
+    section = snapshot.get("indexes")
+    assert SECRET not in repr(section)
+    assert section == {"primary": {"type": "qdrant", "api_key": REDACTED}}
+
+    nested = snapshot.get("indexes.primary")
+    assert SECRET not in repr(nested)
+    assert nested == {"type": "qdrant", "api_key": REDACTED}
+
+
+def test_get_on_the_root_of_a_config_is_redacted() -> None:
+    """The widest possible read must be redacted too."""
+    snapshot = resolved_with_secret().snapshot
+    for path in ("indexes", "indexes.primary", "indexes.primary.api_key"):
+        assert SECRET not in repr(snapshot.get(path)), path
+
+
+def test_reveal_still_returns_whole_sections_unredacted() -> None:
+    """The escape hatch must keep working, or a factory cannot build a client."""
+    snapshot = resolved_with_secret().snapshot
+    assert snapshot.reveal("indexes.primary")["api_key"] == SECRET  # type: ignore[index,call-overload]
+
+
+def test_a_pickled_snapshot_round_trips_with_its_hash_intact() -> None:
+    """Regression: ``__getstate__`` omitted ``hash``, so a revived snapshot
+    reported an empty string for it.
+
+    Worse than raising: a run manifest would have recorded ``config_hash=""``
+    and nobody would have noticed until a regression could not be bisected.
+    """
+    snapshot = resolved_with_secret().snapshot
+    revived = pickle.loads(pickle.dumps(snapshot))  # noqa: S301
+
+    assert revived.hash == snapshot.hash
+    assert revived.env == snapshot.env
+    assert revived.secret_paths == snapshot.secret_paths
+    assert revived.get("indexes.primary.api_key") == REDACTED
+    assert revived.reveal("indexes.primary.api_key") == REDACTED, (
+        "a pickled configuration has left the process; it must not carry secrets"
+    )
+
+
+def test_mixed_case_env_overrides_cannot_silently_replace_a_section() -> None:
+    """Regression: entries were sorted by raw variable name.
+
+    Section names are case-insensitive, so ``HARDPOINT__A__B__C`` sorted before
+    ``hardpoint__a__b``; the shorter variable then overwrote the section the
+    longer one had built, losing configuration without a word.
+    """
+    with pytest.raises(InvalidConfigError) as exc_info:
+        parse_env_overrides({"HARDPOINT__A__B__C": "2", "hardpoint__A__B": "1"})
+
+    rendered = str(exc_info.value)
+    assert "hardpoint__A__B" in rendered
+    assert "HARDPOINT__A__B__C" in rendered
+
+
+def test_env_override_conflict_is_detected_in_either_declaration_order() -> None:
+    """The conflict is symmetric, so detection must be too."""
+    for environ in (
+        {"HARDPOINT__A__B": "1", "HARDPOINT__A__B__C": "2"},
+        {"HARDPOINT__A__B__C": "2", "HARDPOINT__A__B": "1"},
+        {"hardpoint__a__b": "1", "HARDPOINT__A__B__C": "2"},
+    ):
+        with pytest.raises(InvalidConfigError):
+            parse_env_overrides(environ)
+
+
+def test_case_differences_alone_are_still_accepted() -> None:
+    """Case-insensitivity is the documented behaviour; only conflicts are errors."""
+    assert parse_env_overrides({"hardpoint__RETRIEVAL__top_k": "9"}) == {"retrieval": {"top_k": 9}}
+
+
+def test_replacing_a_section_with_a_scalar_purges_stale_origins() -> None:
+    """Regression: ``config show`` would annotate keys that no longer exist.
+
+    An overlay that replaces a whole section leaves the previous layer's origin
+    entries pointing at paths the resolved config does not contain.
+    """
+    resolved = resolve(
+        base={"retrieval": {"rerank": {"enabled": True, "top_k": 4}}},
+        env_file={"retrieval": {"rerank": {"enabled": False}}},
+        environ={},
+    )
+    live = set(resolved.snapshot.paths())
+    recorded = set(resolved.snapshot.origins)
+    assert recorded <= live, f"origins describe paths that do not exist: {recorded - live}"

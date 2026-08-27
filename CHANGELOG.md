@@ -11,6 +11,23 @@ carries a migration note here.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ConfigSnapshot.get()` returned unredacted data when the path addressed a
+  section rather than a leaf, so reading a whole config block exposed any
+  secret inside it. It now reads the redacted view at every depth.
+- `ConfigSnapshot` unpickled with an empty `hash`, which would have let a run
+  manifest record `config_hash=""` rather than failing.
+- `parse_env_overrides` sorted by raw variable name, so with case-differing
+  names a shorter `HARDPOINT__A__B` could silently replace the section built by
+  `HARDPOINT__A__B__C` instead of reporting the conflict.
+- `RecordingTracer` kept one shared span stack, producing a wrong parent/child
+  tree whenever two tasks opened spans concurrently. Nesting is now task-local.
+- `_deep_merge` left origin entries for keys an overlay had replaced, so
+  `config show` could annotate paths that no longer exist.
+- `Deadline.check` reported `limit_value=0.0, observed=0.0`; it now reports how
+  far past the deadline the run is.
+
 ### Added
 
 - Repository scaffold: `pyproject.toml` with the locked five-dependency base

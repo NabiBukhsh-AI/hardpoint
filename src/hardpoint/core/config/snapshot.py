@@ -115,6 +115,16 @@ def redact(data: Mapping[str, JsonValue], secret_paths: frozenset[str]) -> dict[
     return walk(data, "")
 
 
+def _traverse(node: Mapping[str, JsonValue], path: str, default: JsonValue) -> JsonValue:
+    """Follow a dotted path into a nested mapping, returning ``default`` on a miss."""
+    current: JsonValue = dict(node)
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return default
+        current = current[part]
+    return current
+
+
 @dataclass(frozen=True)
 class ConfigSnapshot:
     """Immutable, hashed configuration for one process or one run.
@@ -170,17 +180,22 @@ class ConfigSnapshot:
     def get(self, path: str, default: JsonValue = None) -> JsonValue:
         """Read a resolved value by dotted path, redacting secrets.
 
+        Reads the *redacted* view rather than checking whether this exact path
+        is secret. That distinction is the whole correctness of this method: an
+        exact-path check leaves ``get("indexes.primary")`` returning the section
+        as a raw dict with a live API key inside it, which is a leak through the
+        accessor documented as the safe one.
+
         Args:
-            path: Dotted path, for example ``providers.llm.model``.
+            path: Dotted path, for example ``providers.llm.model``. May address
+                a section as well as a leaf.
             default: Returned when the path is absent.
 
         Returns:
-            The value, or :data:`REDACTED` when the path holds a secret, or
-            ``default`` when the path is absent.
+            The value with every secret at or beneath it replaced by
+            :data:`REDACTED`, or ``default`` when the path is absent.
         """
-        if path in self.secret_paths:
-            return REDACTED
-        return self._traverse(path, default)
+        return _traverse(self.redacted, path, default)
 
     def reveal(self, path: str, default: JsonValue = None) -> JsonValue:
         """Read a resolved value by dotted path **without** redacting it.
@@ -197,9 +212,9 @@ class ConfigSnapshot:
             default: Returned when the path is absent.
 
         Returns:
-            The real value.
+            The real value, or the whole section when ``path`` addresses one.
         """
-        return self._traverse(path, default)
+        return _traverse(self.data, path, default)
 
     def origin(self, path: str) -> Layer:
         """Return the layer that supplied the winning value for a path.
@@ -217,14 +232,6 @@ class ConfigSnapshot:
         """Return every dotted leaf path, sorted."""
         return sorted(path for path, _ in flatten(self.data))
 
-    def _traverse(self, path: str, default: JsonValue) -> JsonValue:
-        node: JsonValue = dict(self.data)
-        for part in path.split("."):
-            if not isinstance(node, dict) or part not in node:
-                return default
-            node = node[part]
-        return node
-
     def __repr__(self) -> str:
         """Render the redacted configuration. Never the resolved one."""
         return (
@@ -236,13 +243,26 @@ class ConfigSnapshot:
         """Alias of :meth:`__repr__`, so an f-string cannot leak a secret."""
         return repr(self)
 
-    # A snapshot must never be pickled or copied into a log by a serialiser
-    # that walks __dict__. Both hooks below return the redacted form.
     def __getstate__(self) -> dict[str, Any]:
-        """Return the redacted state, so pickling cannot exfiltrate a secret."""
+        """Return the redacted state, so pickling cannot exfiltrate a secret.
+
+        Every field is included, not only the four that identify the snapshot:
+        omitting ``hash`` left an unpickled snapshot reporting an empty string
+        for it, which is worse than failing outright because a run manifest
+        would happily record ``config_hash=""``.
+
+        A revived snapshot carries the redacted values, so :meth:`reveal`
+        returns :data:`REDACTED` rather than a secret. That is intended -- a
+        pickled configuration is a configuration that has left the process --
+        and it means a snapshot must be re-resolved, not unpickled, wherever a
+        real credential is needed.
+        """
+        redacted = self.to_dict()
         return {
             "env": self.env,
-            "data": self.to_dict(),
+            "data": redacted,
             "origins": dict(self.origins),
             "secret_paths": self.secret_paths,
+            "redacted": redacted,
+            "hash": self.hash,
         }

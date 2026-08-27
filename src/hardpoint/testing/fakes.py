@@ -31,6 +31,7 @@ import math
 import struct
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Literal
 
 from hardpoint.core.capabilities import ALL_FILTER_OPS, IndexCapabilities, ModelCapabilities
@@ -789,34 +790,51 @@ class RecordedSpan:
         return f"RecordedSpan({self.name!r}, children={len(self.children)})"
 
 
+# Task-local, not shared: a plain list would be wrong the moment two tasks open
+# spans concurrently, and "traces nest correctly across async boundaries" is
+# exactly the property this fake exists to let a test assert. anyio and asyncio
+# both copy the current context when starting a task, so each task inherits its
+# parent's stack and then diverges. A ContextVar is task-local storage rather
+# than module-level mutable state, which is why it does not offend
+# INSTRUCTIONS.md §4.
+_SPAN_STACK: ContextVar[tuple[RecordedSpan, ...]] = ContextVar(
+    "hardpoint_recording_span_stack", default=()
+)
+
+
 class RecordingTracer:
     """A ``Tracer`` that keeps every span, including its nesting.
 
-    Nesting is tracked because "traces nest correctly across async boundaries"
-    is a real M2 requirement and ad hoc logging is exactly what fails it.
+    Nesting is tracked through a :class:`~contextvars.ContextVar`, so two
+    retrievers running concurrently under one pipeline span each nest under that
+    pipeline rather than under whichever sibling happened to open last. A shared
+    list would produce a plausible-looking but entirely wrong tree, and a test
+    asserting on it would pass while proving nothing.
     """
 
     def __init__(self) -> None:
         self.spans: list[RecordedSpan] = []
         self.roots: list[RecordedSpan] = []
-        self._stack: list[RecordedSpan] = []
 
     def span(self, name: str, **attrs: JsonValue) -> AbstractAsyncContextManager[RecordedSpan]:
-        """Open a span as an async context manager."""
+        """Open a span as an async context manager, nested under the current one."""
 
         @asynccontextmanager
         async def scope() -> AsyncIterator[RecordedSpan]:
             recorded = RecordedSpan(name, dict(attrs))
             self.spans.append(recorded)
-            if self._stack:
-                self._stack[-1].children.append(recorded)
+
+            stack = _SPAN_STACK.get()
+            if stack:
+                stack[-1].children.append(recorded)
             else:
                 self.roots.append(recorded)
-            self._stack.append(recorded)
+
+            token = _SPAN_STACK.set((*stack, recorded))
             try:
                 yield recorded
             finally:
-                self._stack.pop()
+                _SPAN_STACK.reset(token)
 
         return scope()
 
