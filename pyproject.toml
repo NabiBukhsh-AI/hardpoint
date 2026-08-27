@@ -158,6 +158,8 @@ ignore = [
 "src/hardpoint/testing/**" = ["S101", "ARG002"]
 "src/hardpoint/adapters/**" = ["ARG002"]
 "src/hardpoint/ingestion/**" = ["ARG002"]
+"src/hardpoint/retrieval/**" = ["ARG002"]
+"src/hardpoint/generation/**" = ["ARG002"]
 # The no-op implementations take the arguments their port declares and discard
 # them. That is the entire point, so ARG002 fires on every method.
 # Every policy has the same run(operation, call, ctx) signature so the chain can

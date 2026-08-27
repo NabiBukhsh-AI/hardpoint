@@ -92,5 +92,11 @@ carries a migration note here.
 - `ingestion.report`: `IngestReport` and the JSONL quarantine artefact.
 - `core.ports.IndexMeta` and `StateStore.index_meta` / `record_index_meta`,
   completing the port against the `index_meta` table the schema specifies.
+- `retrieval`: `VectorRetriever` and `ContextAssembler`, with token budgeting,
+  three orderings, citation keys, recorded drops, and a delimited context block
+  labelled as untrusted data.
+- `generation`: `Generate` with streaming, citations and a populated
+  `RunManifest`; `PromptTemplate`, `InMemoryPromptStore` and `FilePromptStore`,
+  with prompt versions derived from a content hash.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
