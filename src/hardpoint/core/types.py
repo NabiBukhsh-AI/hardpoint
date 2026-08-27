@@ -11,7 +11,19 @@ from typing import TypeAlias
 
 from pydantic import JsonValue
 
-__all__ = ["JsonValue", "ModelId", "RunId"]
+__all__ = ["CONTRACT_VERSION", "JsonValue", "ModelId", "RunId"]
+
+CONTRACT_VERSION = "1.0"
+"""Version of the port Protocols, independent of the distribution version.
+
+Ports change only when this increments, which is rare and always accompanied by
+a migration note. Third-party components declare the contract version they
+target so the registry can warn on a mismatch (ARCHITECTURE.md §17.3).
+
+Defined here rather than in ``hardpoint/__init__.py`` so that ``core`` can read
+it without importing the root package, which would become a cycle as soon as the
+root starts re-exporting core names as public API.
+"""
 
 ModelId: TypeAlias = str
 """Identifier for a model, by convention ``"<provider>/<model>"``.

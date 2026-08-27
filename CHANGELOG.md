@@ -37,5 +37,9 @@ carries a migration note here.
   tracking, `${env:VAR}` and `${env:VAR:-default}` interpolation that names the
   file and line on a miss, secret redaction, and a hashed immutable
   `ConfigSnapshot` whose only unredacted accessor is `reveal()`.
+- `core.registry`: `ComponentRegistry` with a lazy built-in table, deterministic
+  project > entrypoint > builtin precedence, collision errors naming both
+  sources, edit-distance suggestions for an unknown key, per-component option
+  validation, and `MissingDependencyError` carrying the exact install command.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

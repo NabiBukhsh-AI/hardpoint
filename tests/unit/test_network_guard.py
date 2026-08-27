@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 
 from tests import conftest
-from tests.conftest import NetworkAccessDeniedError
+from tests.conftest import NetworkAccessDeniedError, is_local
 
 UNROUTABLE = ("203.0.113.1", 9)  # TEST-NET-3, RFC 5737, discard port
 
@@ -47,6 +47,52 @@ def test_create_connection_is_blocked() -> None:
     """The module-level helper most HTTP clients reach for is blocked."""
     with pytest.raises(NetworkAccessDeniedError):
         socket.create_connection(UNROUTABLE, timeout=0.001)
+
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [
+        (("127.0.0.1", 8080), True),
+        (("127.9.9.9", 1), True),
+        (("::1", 8080), True),
+        (("localhost", 80), True),
+        (("LOCALHOST", 80), True),
+        ("/tmp/socket", True),
+        (b"/tmp/socket", True),
+        (("203.0.113.1", 443), False),
+        (("api.openai.com", 443), False),
+        (("8.8.8.8", 53), False),
+        ((), False),
+        (None, False),
+        ((12345, 80), False),
+    ],
+)
+def test_loopback_is_local_and_everything_else_is_not(address: object, expected: bool) -> None:
+    """The carve-out must be exactly loopback, and unrecognised forms fail closed.
+
+    Loopback is permitted because asyncio's own event loop opens a loopback
+    socketpair on Windows, and because a local fake server is a legitimate way to
+    test transport. Anything the classifier cannot understand is treated as
+    external.
+    """
+    assert is_local(address) is expected
+
+
+def test_loopback_connections_are_permitted() -> None:
+    """A local server must be reachable, or the async event loop cannot start.
+
+    Uses a real listening socket on an ephemeral port, so this exercises the
+    guard's allow path rather than only asserting on the classifier.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+            client.settimeout(2.0)
+            client.connect(("127.0.0.1", port))  # must not raise
+            assert client.getpeername()[1] == port
 
 
 def test_guard_is_installed_and_the_originals_are_saved() -> None:

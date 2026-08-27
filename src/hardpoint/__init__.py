@@ -14,12 +14,6 @@ from __future__ import annotations
 __version__ = "0.0.0"
 """Distribution version. Single source of truth; hatchling reads it from here."""
 
-CONTRACT_VERSION = "1.0"
-"""Version of the port Protocols, independent of ``__version__``.
-
-Ports change only when this increments, which is rare and always accompanied by
-a migration note. Third-party components declare the contract version they
-target so the registry can warn on a mismatch (ARCHITECTURE.md §17.3).
-"""
+from hardpoint.core.types import CONTRACT_VERSION  # noqa: E402 - must follow __version__
 
 __all__ = ["CONTRACT_VERSION", "__version__"]

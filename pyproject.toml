@@ -137,7 +137,19 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D", "S101", "ANN", "PLR2004", "ARG001", "ARG002", "SLF001"]
+# Tests may assert, use magic numbers, reach into private names to check an
+# invariant, and import inside a function to keep a helper next to its use.
+"tests/**" = [
+  "D",
+  "S101",
+  "S108",
+  "ANN",
+  "PLR2004",
+  "PLC0415",
+  "ARG001",
+  "ARG002",
+  "SLF001",
+]
 "src/hardpoint/testing/**" = ["S101"] # contract kits assert; that is their job
 # These two files exist to exercise Unicode normalisation, so they contain
 # NBSP, em space and fullwidth digits on purpose. RUF001 would flag exactly
