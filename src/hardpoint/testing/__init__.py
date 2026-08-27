@@ -11,7 +11,11 @@ of ``hardpoint.testing`` imports cleanly in a bare environment.
 
 from __future__ import annotations
 
-from hardpoint.testing.contracts import vector_index_contract
+from hardpoint.testing.contracts import (
+    embedding_model_contract,
+    language_model_contract,
+    vector_index_contract,
+)
 from hardpoint.testing.fakes import (
     FakeCache,
     FakeEmbeddingModel,
@@ -48,5 +52,7 @@ __all__ = [
     "build_retrieved",
     "build_run_context",
     "deterministic_vector",
+    "embedding_model_contract",
+    "language_model_contract",
     "vector_index_contract",
 ]

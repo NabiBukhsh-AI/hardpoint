@@ -98,5 +98,10 @@ carries a migration note here.
 - `generation`: `Generate` with streaming, citations and a populated
   `RunManifest`; `PromptTemplate`, `InMemoryPromptStore` and `FilePromptStore`,
   with prompt versions derived from a content hash.
+- `adapters`: `OpenAICompatibleChat` and `OpenAICompatibleEmbeddings`, speaking
+  the OpenAI wire protocol over `httpx` and requiring no extra, with every
+  provider failure mapped into the error taxonomy.
+- `testing.contracts.language_model_contract` and `embedding_model_contract`,
+  exported for third-party adapter authors.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
