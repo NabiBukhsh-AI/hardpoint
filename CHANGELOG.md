@@ -48,5 +48,12 @@ carries a migration note here.
   `VectorIndex`, `Reranker`, `DocumentParser`, `Chunker`, `CacheBackend`,
   `Tracer`, `Span`, `MetricSink`, `Tool`, `PromptStore`, `StateStore`,
   `BlobStore` -- with the request and result types that form their contracts.
+- `hardpoint.testing`: `FakeLanguageModel`, `FakeEmbeddingModel`,
+  `InMemoryVectorIndex`, `FakeReranker`, `FakeCache`, `RecordingTracer`,
+  `RecordingMetricSink`, and `build_run_context` plus deterministic model
+  builders.
+- `hardpoint.testing.contracts.vector_index_contract`: the `VectorIndex`
+  conformance suite, exported for third-party adapter authors.
+  `InMemoryVectorIndex` passes it in four configurations.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

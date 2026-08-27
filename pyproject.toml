@@ -150,7 +150,10 @@ ignore = [
   "ARG002",
   "SLF001",
 ]
-"src/hardpoint/testing/**" = ["S101"] # contract kits assert; that is their job
+# Fakes and adapters take `ctx` because the port signature requires it, whether
+# or not that particular implementation reads it. ARG002 would fire on every one.
+"src/hardpoint/testing/**" = ["S101", "ARG002"]
+"src/hardpoint/adapters/**" = ["ARG002"]
 # These two files exist to exercise Unicode normalisation, so they contain
 # NBSP, em space and fullwidth digits on purpose. RUF001 would flag exactly
 # the characters under test.
