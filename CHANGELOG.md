@@ -103,5 +103,7 @@ carries a migration note here.
   provider failure mapped into the error taxonomy.
 - `testing.contracts.language_model_contract` and `embedding_model_contract`,
   exported for third-party adapter authors.
+- `adapters.index.QdrantIndex`, over Qdrant's REST API and requiring no extra,
+  with faithful filter translation and `contains` deliberately undeclared.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
