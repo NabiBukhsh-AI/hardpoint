@@ -154,6 +154,13 @@ ignore = [
 # or not that particular implementation reads it. ARG002 would fire on every one.
 "src/hardpoint/testing/**" = ["S101", "ARG002"]
 "src/hardpoint/adapters/**" = ["ARG002"]
+# The no-op implementations take the arguments their port declares and discard
+# them. That is the entire point, so ARG002 fires on every method.
+# Every policy has the same run(operation, call, ctx) signature so the chain can
+# compose them uniformly; not all of them read every argument.
+"src/hardpoint/runtime/policies.py" = ["ARG002"]
+"src/hardpoint/observability/tracing.py" = ["ARG002"]
+"src/hardpoint/observability/metrics.py" = ["ARG002"]
 # These two files exist to exercise Unicode normalisation, so they contain
 # NBSP, em space and fullwidth digits on purpose. RUF001 would flag exactly
 # the characters under test.

@@ -72,5 +72,12 @@ carries a migration note here.
 - `hardpoint.testing.contracts.vector_index_contract`: the `VectorIndex`
   conformance suite, exported for third-party adapter authors.
   `InMemoryVectorIndex` passes it in four configurations.
+- `runtime`: `Step`, `StepResult`, `FailurePolicy` and `as_step`; `Pipeline`
+  with `run_sync`, `explain` and `describe`; `gather_bounded` and
+  `gather_tolerant`; and the single implementation of `Retry`, `Timeout`,
+  `CircuitBreaker`, `RateLimit` and `Fallback`, composed by `PolicyChain` in a
+  fixed order.
+- `observability`: `NoOpTracer` and `NoOpMetricSink`, the defaults that let a
+  `RunContext` be built outside a test.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
