@@ -32,5 +32,10 @@ carries a migration note here.
 - `core.capabilities`: `ModelCapabilities` and `IndexCapabilities`, with
   `require` failing at composition time.
 - `core.models`: the boundary data models, frozen and `extra="forbid"`.
+- `core.config`: five-layer resolution (defaults, `base.yaml`, `{env}.yaml`,
+  `HARDPOINT__` environment overrides, code overrides) with per-key origin
+  tracking, `${env:VAR}` and `${env:VAR:-default}` interpolation that names the
+  file and line on a miss, secret redaction, and a hashed immutable
+  `ConfigSnapshot` whose only unredacted accessor is `reveal()`.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
