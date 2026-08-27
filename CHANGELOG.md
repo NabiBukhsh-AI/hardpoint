@@ -41,5 +41,12 @@ carries a migration note here.
   project > entrypoint > builtin precedence, collision errors naming both
   sources, edit-distance suggestions for an unknown key, per-component option
   validation, and `MissingDependencyError` carrying the exact install command.
+- `core.context`: `RunContext` with its locked nine-attribute scope, plus
+  `Deadline` (absolute, monotonic, only ever tightening), `Budget`,
+  `UsageAccumulator` and `CacheHandle`.
+- `core.ports`: every provider Protocol -- `LanguageModel`, `EmbeddingModel`,
+  `VectorIndex`, `Reranker`, `DocumentParser`, `Chunker`, `CacheBackend`,
+  `Tracer`, `Span`, `MetricSink`, `Tool`, `PromptStore`, `StateStore`,
+  `BlobStore` -- with the request and result types that form their contracts.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
