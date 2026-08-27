@@ -76,6 +76,7 @@ __all__ = [
     "GenerationRequest",
     "GenerationResult",
     "IndexInfo",
+    "IndexMeta",
     "IndexRecord",
     "IndexSpec",
     "LanguageModel",
@@ -981,6 +982,30 @@ class ChunkRecord(BaseModel):
     embedded_with: ModelId
 
 
+class IndexMeta(BaseModel):
+    """What the manifest remembers about an index.
+
+    Mirrors the ``index_meta`` table in INSTRUCTIONS.md §6.2. The three fields
+    beyond the name each prevent a specific silent corruption:
+
+    - ``epoch`` is in every downstream cache key, so a re-index invalidates
+      them rather than letting a cache serve pre-reindex answers indefinitely.
+    - ``dimensions`` is checked before writing, so switching to a model of a
+      different width fails loudly instead of erroring per record or, worse,
+      silently truncating.
+    - ``embed_model`` is what makes "has this chunk already been embedded"
+      answerable. Without it, changing models would leave an index holding a
+      mixture of incomparable vectors and no way to tell which was which.
+    """
+
+    model_config = _FROZEN
+
+    index_name: str
+    epoch: int = Field(default=0, ge=0)
+    dimensions: int | None = Field(default=None, gt=0)
+    embed_model: ModelId | None = None
+
+
 @runtime_checkable
 class StateStore(Protocol):
     """The ingestion manifest: what has been ingested, and with what.
@@ -1032,6 +1057,14 @@ class StateStore(Protocol):
         Called once at the end of a successful run. Every downstream cache key
         includes the epoch, so this is what invalidates them.
         """
+        ...
+
+    async def index_meta(self, index_name: str) -> IndexMeta | None:
+        """Return what is recorded about an index, or ``None`` if it is new."""
+        ...
+
+    async def record_index_meta(self, meta: IndexMeta) -> None:
+        """Record an index's dimensions and embedding model."""
         ...
 
     async def record_run(self, run_id: str, source_id: str, report: JsonValue) -> None:

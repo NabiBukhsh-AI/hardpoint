@@ -85,5 +85,12 @@ carries a migration note here.
   `MarkdownParser`; `RecursiveChunker`, which splits on headings and paragraph
   boundaries and carries the heading path into each chunk; and `ChunkValidator`
   with the empty, too-short, too-long, boilerplate and duplicate rules.
+- `ingestion.state.SqliteStateStore`: the manifest, with the versioned schema
+  from INSTRUCTIONS.md §6.2 and per-document atomic commits.
+- `ingestion.sync.SyncEngine`: the idempotent, incremental, delete-correct and
+  resumable sync engine, with `plan()` for `--plan`.
+- `ingestion.report`: `IngestReport` and the JSONL quarantine artefact.
+- `core.ports.IndexMeta` and `StateStore.index_meta` / `record_index_meta`,
+  completing the port against the `index_meta` table the schema specifies.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

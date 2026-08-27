@@ -149,6 +149,9 @@ ignore = [
   "ARG001",
   "ARG002",
   "SLF001",
+  # A test reading a fixture file with pathlib is not blocking anything that
+  # matters; the async-safety rule is for library code.
+  "ASYNC240",
 ]
 # Fakes and adapters take `ctx` because the port signature requires it, whether
 # or not that particular implementation reads it. ARG002 would fire on every one.

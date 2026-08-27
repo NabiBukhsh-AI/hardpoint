@@ -163,6 +163,8 @@ def test_every_port_is_runtime_checkable() -> None:
                 "tombstone",
                 "index_epoch",
                 "bump_epoch",
+                "index_meta",
+                "record_index_meta",
                 "record_run",
             },
         ),
