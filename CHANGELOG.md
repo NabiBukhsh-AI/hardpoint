@@ -79,5 +79,11 @@ carries a migration note here.
   fixed order.
 - `observability`: `NoOpTracer` and `NoOpMetricSink`, the defaults that let a
   `RunContext` be built outside a test.
+- `core.tokens`: `estimate_tokens`, the documented fallback both the chunker and
+  the context assembler measure with when no tokenizer is available.
+- `ingestion`: the `Source` protocol and `LocalFileSource`; `TextParser` and
+  `MarkdownParser`; `RecursiveChunker`, which splits on headings and paragraph
+  boundaries and carries the heading path into each chunk; and `ChunkValidator`
+  with the empty, too-short, too-long, boilerplate and duplicate rules.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD
