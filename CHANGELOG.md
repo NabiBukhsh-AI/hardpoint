@@ -50,6 +50,11 @@ carries a migration note here.
   snapshot failed.
 - SQLite connections in tests were never closed, which Python 3.13 reports as a
   `ResourceWarning` and the suite treats as an error.
+- `load_pipeline` reused a cached `pipelines` module from a different project
+  directory, so a process that loaded two projects answered with the first
+  project's pipeline.
+- Generated projects inherited the template checkout's line endings; they are
+  now LF everywhere.
 
 ### Added
 
@@ -184,5 +189,24 @@ carries a migration note here.
   run, and `Generate.stream_events` is the single generation code path.
 - `BuiltinEntry.requires`, so a missing extra is reported from the registry
   without importing or constructing anything.
+- `templates/rag-service`: a FastAPI service with `POST /query`,
+  `POST /query/stream` (SSE deltas, then a terminal event with citations, usage
+  and degradations), `GET /healthz`, `GET /readyz`, `GET /metrics`, request ids
+  propagated to run ids, graceful shutdown, a multi-stage Dockerfile, a compose
+  file with Qdrant, and a CI workflow.
+- `hardpoint serve`, running `project.service` under uvicorn with the request
+  deadline as the graceful-shutdown window.
+- `GuardedGenerate` streams when every output guard only flags, and withholds
+  text until checked when a guard could block, redact or retry.
+- `generation.structured.generate_structured`: coercion into a Pydantic model
+  with one repair attempt carrying the validation error.
+- `observability.logging`: `run_logger`, stamping `run_id` and `trace_id` on
+  every record, and `JsonFormatter` for projects to install. The library still
+  configures no handlers.
+- `scripts/benchmark_overhead.py` and a test holding framework overhead for a
+  six-step pipeline under 15 ms p95 (about 1 ms measured).
+- The M2 Definition of Done as a test: a generated service under concurrent
+  load streams, nests traces correctly, prices every request and leaks no
+  sessions, files or tasks.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

@@ -14,6 +14,7 @@ from hardpoint.generation.prompts import (
     PromptTemplate,
     render_template,
 )
+from hardpoint.generation.structured import Structured, generate_structured, parse_json
 
 __all__ = [
     "FilePromptStore",
@@ -21,5 +22,8 @@ __all__ = [
     "InMemoryPromptStore",
     "NoContextPolicy",
     "PromptTemplate",
+    "Structured",
+    "generate_structured",
+    "parse_json",
     "render_template",
 ]

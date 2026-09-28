@@ -23,7 +23,7 @@ teaches people to switch it off.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -252,6 +252,35 @@ class GuardedGenerate:
         self.name = name
         self.generate = generate
         self.output = OutputGuard(guards, refusal=refusal, name=name)
+
+    @property
+    def streamable(self) -> bool:
+        """Whether text can be streamed before the guards have seen it.
+
+        Only when no guard could change or withhold it: ``allow`` and ``flag``
+        leave the text as it is, so the answer is checked after streaming and a
+        flag is still recorded. ``block``, ``redact`` and ``retry`` could each
+        withdraw text already shown, so those wait for the check.
+        """
+        return all(check.action in ("allow", "flag") for check in self.output.checks)
+
+    async def stream_events(
+        self, data: Assembled, ctx: RunContext
+    ) -> AsyncIterator[str | StepResult[Answer]]:
+        """Stream when :attr:`streamable`, then yield the checked result, last."""
+        if not self.streamable:
+            yield await self(data, ctx)
+            return
+        answer: Answer | None = None
+        async for event in self.generate.stream_events(data, ctx):
+            if isinstance(event, Answer):
+                answer = event
+            else:
+                yield event
+        if answer is None:  # pragma: no cover - stream_events always ends with an Answer
+            raise RuntimeError("Generate.stream_events ended without an Answer")
+        final, applied = await self.output.apply(answer, ctx)
+        yield StepResult(final, tuple(applied))
 
     async def __call__(self, data: Assembled, ctx: RunContext) -> StepResult[Answer]:
         """Generate, check, and regenerate once if a guard asks."""

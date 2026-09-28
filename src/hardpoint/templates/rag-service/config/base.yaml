@@ -1,0 +1,73 @@
+# Structure lives here. Anything secret or environment-specific comes from the
+# environment through ${env:...} -- never a literal key (`hardpoint doctor`
+# fails if one appears). `hardpoint config schema > schema.json` gives your
+# editor autocomplete for every key below.
+version: 1
+
+project:
+  name: {{ project_name }}
+  hardpoint_version: "{{ hardpoint_version }}"
+  pipeline: pipelines.rag:build
+  service: service.app:create_app
+  prompts_dir: prompts
+
+providers:
+  llm:
+    type: openai_chat
+    model: ${env:LLM_MODEL:-gpt-4o-mini}
+    base_url: ${env:OPENAI_BASE_URL:-https://api.openai.com/v1}
+    api_key: ${env:OPENAI_API_KEY}
+    context_window_tokens: 128000
+    policies:
+      retry: {max_attempts: 4, on: [rate_limited, transient, timeout]}
+      timeout: {per_attempt_s: 30, total_s: 60}
+      circuit_breaker: {enabled: true, failure_threshold: 5, cooldown_s: 30}
+      rate_limit: {max_concurrent: 16}
+  embeddings:
+    type: openai_embeddings
+    model: ${env:EMBED_MODEL:-text-embedding-3-small}
+    dimensions: 1536
+    base_url: ${env:OPENAI_BASE_URL:-https://api.openai.com/v1}
+    api_key: ${env:OPENAI_API_KEY}
+    policies:
+      retry: {max_attempts: 3}
+      timeout: {per_attempt_s: 10}
+
+indexes:
+  primary:
+    type: qdrant
+    url: ${env:QDRANT_URL:-http://localhost:6333}
+    api_key: ${env:QDRANT_API_KEY:-}
+    policies:
+      retry: {max_attempts: 3}
+      timeout: {per_attempt_s: 5}
+
+sources:
+  docs:
+    type: local_files
+    root: docs
+
+ingestion:
+  chunking: {target_tokens: 300, overlap_tokens: 40, min_tokens: 8}
+
+retrieval:
+  top_k: 8
+  context: {token_budget: 3000, ordering: relevance}
+  no_context_policy: abstain
+
+guards:
+  input:
+    - {type: input_shape, max_chars: 4000}
+    - {type: injection_heuristic, action: flag}
+  output:
+    - {type: groundedness, min_supported_ratio: 0.7, action: flag}
+
+cache:
+  backend: {type: memory}          # `redis` when running more than one replica
+
+observability:
+  tracer: {type: collecting}       # `otel` in config/prod.yaml
+  metrics: {type: memory}          # exposed at GET /metrics
+
+budgets:
+  request: {max_llm_calls: 4, deadline_s: 30}

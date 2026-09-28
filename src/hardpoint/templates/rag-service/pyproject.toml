@@ -7,13 +7,14 @@ name = "{{ project_name }}"
 version = "0.1.0"
 description = "A retrieval-augmented question answering service built with hardpoint."
 requires-python = ">=3.11"
-dependencies = ["hardpoint>={{ hardpoint_version }}"]
+dependencies = ["hardpoint[serve]>={{ hardpoint_version }}"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.2"]
+prod = ["hardpoint[otel,redis]>={{ hardpoint_version }}"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["pipelines"]
+packages = ["pipelines", "service"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

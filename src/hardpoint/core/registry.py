@@ -236,6 +236,8 @@ BUILTIN_COMPONENTS: Final[tuple[BuiltinEntry, ...]] = (
            factory="build_noop", config_model="NoOpTracerConfig"),
     _entry("console", Kind.TRACER, "hardpoint.observability.tracing",
            factory="build_console", config_model="ConsoleTracerConfig"),
+    _entry("collecting", Kind.TRACER, "hardpoint.observability.tracing",
+           factory="build_collecting", config_model="CollectingTracerConfig"),
     _entry("otel", Kind.TRACER, "hardpoint.adapters.tracing.otel",
            factory="build_tracer", config_model="OTelConfig", extra="otel",
            requires=("opentelemetry",)),

@@ -1,0 +1,30 @@
+# Local development: the service plus a Qdrant it can reach.
+#
+#   docker compose up --build
+#   docker compose run --rm app hardpoint ingest run
+#   curl -s localhost:8000/query -H 'content-type: application/json' \
+#        -d '{"question": "How do I rotate an API key?"}'
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [.env]
+    environment:
+      HARDPOINT_ENV: dev
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./docs:/app/docs:ro
+      - hardpoint-state:/app/.hardpoint
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    ports: ["6333:6333"]
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+volumes:
+  hardpoint-state:
+  qdrant-data:

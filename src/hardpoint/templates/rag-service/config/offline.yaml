@@ -1,0 +1,20 @@
+# `--env offline` (or HARDPOINT_ENV=offline): deterministic local fakes and a
+# file-backed index, no keys, no network, no Qdrant. What CI runs, and how to
+# try the service before you have a key. Switching a component's `type:`
+# replaces its whole block, so base.yaml's OpenAI and Qdrant settings do not
+# leak through.
+providers:
+  llm:
+    type: fake_llm
+  embeddings:
+    type: fake_embeddings
+
+indexes:
+  primary:
+    type: sqlite
+    path: .hardpoint/offline-index.db
+
+ingestion:
+  state:
+    type: sqlite
+    path: .hardpoint/offline-state.db

@@ -24,7 +24,7 @@ from hardpoint.core.errors import ConfigError
 
 __all__ = ["TEMPLATES", "diff_project", "render_template_files", "write_project"]
 
-TEMPLATES = ("rag-minimal",)
+TEMPLATES = ("rag-minimal", "rag-service")
 """Every template this release ships."""
 
 _TEXT_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".txt", ".jsonl", ".json", ".example", ""}
@@ -74,7 +74,9 @@ def render_template_files(template: str, project_name: str) -> dict[str, bytes]:
     for relative, source in _walk(_template_root(template)):
         data = source.read_bytes()
         if Path(relative).suffix in _TEXT_SUFFIXES:
-            text = data.decode("utf-8")
+            # LF everywhere, however the template was checked out: a generated
+            # project must not depend on the machine that built the wheel.
+            text = data.decode("utf-8").replace("\r\n", "\n")
             text = text.replace("{{ project_name }}", project_name)
             text = text.replace("{{ hardpoint_version }}", hardpoint.__version__)
             data = text.encode("utf-8")
@@ -113,7 +115,10 @@ def diff_project(destination: Path, template: str) -> str:
         current = destination / relative
         fresh = data.decode("utf-8", errors="replace").splitlines(keepends=True)
         existing = (
-            current.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+            current.read_bytes()
+            .decode("utf-8", errors="replace")
+            .replace("\r\n", "\n")
+            .splitlines(keepends=True)
             if current.is_file()
             else []
         )

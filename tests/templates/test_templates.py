@@ -47,6 +47,7 @@ def test_the_generated_project_is_installable(template: str, tmp_path: Path) -> 
 
     metadata = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
     assert metadata["project"]["name"] == "support-bot"
-    assert f"hardpoint>={hardpoint.__version__}" in metadata["project"]["dependencies"]
+    (requirement,) = [d for d in metadata["project"]["dependencies"] if d.startswith("hardpoint")]
+    assert requirement.endswith(f">={hardpoint.__version__}")
     for package in metadata["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]:
         assert (project / package / "__init__.py").is_file()

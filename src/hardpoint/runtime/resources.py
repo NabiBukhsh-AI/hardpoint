@@ -528,6 +528,7 @@ def load_pipeline(res: Resources) -> Pipeline[Any, Any]:
     cwd = str(Path.cwd())
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
+    _forget_if_stale(module_name, Path(cwd))
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
@@ -550,6 +551,26 @@ def load_pipeline(res: Resources) -> Pipeline[Any, Any]:
         )
     pipeline: Pipeline[Any, Any] = factory(res)
     return pipeline
+
+
+def _forget_if_stale(module_name: str, project: Path) -> None:
+    """Drop a cached project module that belongs to a different project directory.
+
+    ``pipelines.rag`` is a generic name. A process that loads two projects -- a
+    test suite, a notebook -- would otherwise keep answering with the first
+    project's pipeline. Only a module the current directory itself provides is
+    considered, so library recipes are never touched.
+    """
+    top = module_name.split(".", 1)[0]
+    local = project / top
+    if not (local.is_dir() or local.with_suffix(".py").is_file()):
+        return
+    cached = sys.modules.get(top)
+    location = getattr(cached, "__file__", None) if cached is not None else None
+    if location is None or Path(location).resolve().is_relative_to(project.resolve()):
+        return
+    for name in [name for name in sys.modules if name == top or name.startswith(f"{top}.")]:
+        del sys.modules[name]
 
 
 async def answer_query(

@@ -11,32 +11,19 @@ touched.
 from __future__ import annotations
 
 import importlib
-import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from hardpoint.core.errors import ConfigError
 from hardpoint.core.models import Answer
+from hardpoint.generation.structured import parse_json
 from hardpoint.guards.base import GuardAction, GuardResult
 
 if TYPE_CHECKING:
     from hardpoint.core.context import RunContext
 
 __all__ = ["SchemaGuard", "SchemaGuardConfig", "build", "parse_json"]
-
-
-def parse_json(text: str) -> Any:
-    """Parse JSON from model output, tolerating a Markdown code fence around it.
-
-    Raises:
-        ValueError: If no JSON value can be parsed.
-    """
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("\n", 1)[1] if "\n" in stripped else ""
-        stripped = stripped.rsplit("```", 1)[0]
-    return json.loads(stripped)
 
 
 class SchemaGuard:

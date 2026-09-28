@@ -190,6 +190,38 @@ async def test_a_bad_pipeline_factory_names_the_problem(target: str, message: st
 
 
 @pytest.mark.anyio
+async def test_two_projects_in_one_process_each_get_their_own_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``pipelines.rag`` is a generic name; a cached copy from another project is stale."""
+    import sys
+
+    factory = (
+        "from hardpoint.recipes.naive import build as naive\n"
+        "def build(res):\n"
+        "    pipeline = naive(res)\n"
+        "    pipeline.name = {name!r}\n"
+        "    return pipeline\n"
+    )
+    for name in ("first", "second"):
+        (tmp_path / name / "pipelines").mkdir(parents=True)
+        (tmp_path / name / "pipelines" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / name / "pipelines" / "rag.py").write_text(
+            factory.format(name=name), encoding="utf-8"
+        )
+
+    names = []
+    for name in ("first", "second"):
+        monkeypatch.chdir(tmp_path / name)
+        res = await resources({"project": {"pipeline": "pipelines.rag:build"}})
+        names.append(load_pipeline(res).name)
+        await res.aclose()
+    for module in [m for m in sys.modules if m.split(".")[0] == "pipelines"]:
+        del sys.modules[module]
+    assert names == ["first", "second"]
+
+
+@pytest.mark.anyio
 async def test_sources_are_built_on_demand_with_their_key_as_id(tmp_path: Path) -> None:
     (tmp_path / "a.md").write_text("hello", encoding="utf-8")
     res = await resources({"sources": {"docs": {"type": "local_files", "root": str(tmp_path)}}})

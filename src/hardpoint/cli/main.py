@@ -10,6 +10,7 @@ configuration problems, 1 for everything else -- rather than as a traceback.
 
 import json
 import os
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
@@ -30,10 +31,10 @@ from hardpoint.cli.commands.doctor import (
 from hardpoint.cli.commands.ingest import ingest as run_ingest
 from hardpoint.cli.commands.ingest import ingest_status
 from hardpoint.cli.commands.init import TEMPLATES, diff_project, write_project
-from hardpoint.cli.commands.project import CliState, load_project_config
+from hardpoint.cli.commands.project import CliState, load_project_config, project_environ
 from hardpoint.cli.commands.schema import config_schema
 from hardpoint.core.config.snapshot import flatten
-from hardpoint.core.errors import ConfigError, HardpointError
+from hardpoint.core.errors import ConfigError, HardpointError, MissingDependencyError
 from hardpoint.core.registry import ComponentRegistry, Kind
 from hardpoint.runtime.policies import PolicyChain
 from hardpoint.runtime.resources import Resources, build_resources
@@ -336,6 +337,65 @@ def ask_command(
     if explain:
         typer.echo("")
         typer.echo(render_explain(answer, captured, redact_content=redact))
+
+
+# --------------------------------------------------------------------------- #
+# serve                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@app.command()
+def serve(
+    ctx: typer.Context,
+    host: Annotated[str, typer.Option("--host", help="Interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port to listen on.")] = 8000,
+    workers: Annotated[int, typer.Option("--workers", help="Worker processes.")] = 1,
+) -> None:
+    """Run the project's HTTP service (``project.service``) under uvicorn.
+
+    In-flight requests get the request deadline (``budgets.request.deadline_s``)
+    to finish on shutdown before the service closes its connections.
+    """
+    state = _state(ctx)
+    try:
+        resolved = load_project_config(state)
+        uvicorn = _import_uvicorn()
+    except HardpointError as exc:
+        raise _fail(exc) from None
+
+    # The server process reads configuration itself; hand it the project's
+    # .env and selected environment the same way the other commands see them.
+    for key, value in project_environ().items():
+        os.environ.setdefault(key, value)
+    if state.env:
+        os.environ["HARDPOINT_ENV"] = state.env
+
+    target = resolved.config.project.service
+    module, _, factory = target.partition(":")
+    grace = resolved.config.budgets.request.deadline_s or 30
+    sys.path.insert(0, str(Path.cwd()))
+    uvicorn.run(
+        f"{module}:{factory}",
+        factory=True,
+        host=host,
+        port=port,
+        workers=workers,
+        timeout_graceful_shutdown=int(grace),
+    )
+
+
+def _import_uvicorn() -> Any:
+    try:
+        import uvicorn  # noqa: PLC0415 - the serve extra, only for this command
+    except ModuleNotFoundError as exc:
+        raise MissingDependencyError(
+            "`hardpoint serve` requires the 'serve' extra, which is not installed.",
+            extra="serve",
+            component="serve",
+            remedy="pip install 'hardpoint[serve]'",
+            cause=exc,
+        ) from exc
+    return uvicorn
 
 
 # --------------------------------------------------------------------------- #

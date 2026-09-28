@@ -1,0 +1,11 @@
+# Copy to .env and fill in. .env is ignored by git and docker; never commit a key.
+OPENAI_API_KEY=
+# Any OpenAI-compatible endpoint works: Ollama, vLLM, LM Studio, a gateway.
+# OPENAI_BASE_URL=http://localhost:11434/v1
+# LLM_MODEL=gpt-4o-mini
+# EMBED_MODEL=text-embedding-3-small
+# QDRANT_URL=http://localhost:6333
+# QDRANT_API_KEY=
+# Production only (config/prod.yaml):
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+# REDIS_URL=redis://redis:6379/0

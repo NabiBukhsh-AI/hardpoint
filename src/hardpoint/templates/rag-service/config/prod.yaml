@@ -1,0 +1,16 @@
+# Production overlay (HARDPOINT_ENV=prod).
+#
+# Traces can hold user questions and document text, so message content and
+# chunk text are redacted here -- recording everything would be a compliance
+# trap (ARCHITECTURE.md §19). Traces and metrics go to an OpenTelemetry
+# collector; install the extra with `pip install 'hardpoint[otel]'`.
+observability:
+  tracer: {type: otel, service_name: {{ project_name }}, endpoint: "${env:OTEL_EXPORTER_OTLP_ENDPOINT}"}
+  metrics: {type: otel, service_name: {{ project_name }}, endpoint: "${env:OTEL_EXPORTER_OTLP_ENDPOINT}"}
+  redact: [messages.content, chunk.text]
+
+cache:
+  backend: {type: redis, url: "${env:REDIS_URL}"}
+
+budgets:
+  request: {max_llm_calls: 3, max_cost_usd: 0.10, deadline_s: 25}

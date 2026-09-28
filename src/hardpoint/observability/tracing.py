@@ -48,12 +48,14 @@ __all__ = [
     "SPAN_NAMES",
     "CollectedSpan",
     "CollectingTracer",
+    "CollectingTracerConfig",
     "ConsoleTracer",
     "ConsoleTracerConfig",
     "NoOpSpan",
     "NoOpTracer",
     "NoOpTracerConfig",
     "RedactingTracer",
+    "build_collecting",
     "build_console",
     "build_noop",
     "render_tree",
@@ -409,6 +411,19 @@ class ConsoleTracerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     max_traces: int = Field(default=100, ge=1)
+
+
+class CollectingTracerConfig(BaseModel):
+    """``observability.tracer: {type: collecting}``: the last traces, kept in memory."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    max_traces: int = Field(default=1000, ge=1)
+
+
+def build_collecting(config: CollectingTracerConfig) -> CollectingTracer:
+    """Registry factory for ``type: collecting``."""
+    return CollectingTracer(max_traces=config.max_traces)
 
 
 def build_noop(config: NoOpTracerConfig) -> NoOpTracer:

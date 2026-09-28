@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Configuration is valid
+        run: hardpoint --env offline config validate
+      - name: Doctor, offline
+        run: hardpoint --env offline doctor
+      - name: Tests (offline fakes, no keys, no network)
+        run: pytest -q

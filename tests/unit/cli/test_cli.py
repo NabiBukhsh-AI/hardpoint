@@ -8,6 +8,7 @@ with zero network access (INSTRUCTIONS.md §6.6).
 from __future__ import annotations
 
 import json
+import os
 import socket
 from pathlib import Path
 from typing import Any
@@ -394,6 +395,42 @@ def test_doctor_live_probes_each_provider(project: Path) -> None:
     output = offline("doctor", "--live")
     assert "[ ok ] provider embeddings" in output
     assert "[ ok ] provider llm" in output
+
+
+def test_serve_runs_the_project_service_with_a_graceful_shutdown(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hardpoint.cli.main as cli_main
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeUvicorn:
+        @staticmethod
+        def run(target: str, **options: Any) -> None:
+            calls.append((target, options))
+
+    monkeypatch.setattr(cli_main, "_import_uvicorn", lambda: FakeUvicorn)
+    offline("serve", "--port", "9123")
+
+    ((target, options),) = calls
+    assert target == "service.app:create_app"
+    assert options["factory"] is True
+    assert options["port"] == 9123
+    assert options["timeout_graceful_shutdown"] == 60, "the request deadline, from config"
+    assert os.environ["HARDPOINT_ENV"] == "offline"
+
+
+def test_serve_without_the_extra_names_the_install_command(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hardpoint.cli.main as cli_main
+    from hardpoint.core.errors import MissingDependencyError
+
+    def missing() -> Any:
+        raise MissingDependencyError("no uvicorn", remedy="pip install 'hardpoint[serve]'")
+
+    monkeypatch.setattr(cli_main, "_import_uvicorn", missing)
+    assert "hardpoint[serve]" in offline("serve", code=2)
 
 
 def test_version_command() -> None:

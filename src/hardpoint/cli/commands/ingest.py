@@ -52,6 +52,7 @@ async def build_engine(res: Resources, source: str, *, fail_fast: bool = False) 
         fail_fast=fail_fast or ingestion.fail_fast,
         quarantine_path=ingestion.quarantine_path,
         embed_batch_size=ingestion.embed_batch_size,
+        price_per_million_embed_tokens=res.pricing.embed_price_per_million(res.embedder.id),
     )
 
 

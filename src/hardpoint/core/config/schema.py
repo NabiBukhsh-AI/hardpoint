@@ -393,6 +393,8 @@ class ProjectConfig(BaseModel):
             The CLI, the service and the eval runner all build through this one
             factory, so evaluation can never drift from production (ADR-011).
         prompts_dir: Where the project's prompts live.
+        service: ``module:function`` returning the ASGI app, for
+            ``hardpoint serve``.
     """
 
     model_config = _STRICT
@@ -401,6 +403,7 @@ class ProjectConfig(BaseModel):
     hardpoint_version: str | None = None
     pipeline: str = "pipelines.rag:build"
     prompts_dir: str = "prompts"
+    service: str = "service.app:create_app"
 
 
 class EvalConfig(BaseModel):

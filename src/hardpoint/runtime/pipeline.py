@@ -39,6 +39,7 @@ from hardpoint.core.config.snapshot import ConfigSnapshot
 from hardpoint.core.context import Budget, CacheHandle, Deadline, RunContext, UsageAccumulator
 from hardpoint.core.models import Degradation
 from hardpoint.core.types import JsonValue
+from hardpoint.observability.logging import run_logger
 from hardpoint.observability.metrics import NoOpMetricSink
 from hardpoint.observability.tracing import NoOpTracer
 from hardpoint.runtime.step import (
@@ -57,6 +58,8 @@ __all__ = ["DeltaSink", "Pipeline", "PipelineRun"]
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+_LOGGER = "hardpoint.runtime.pipeline"
 
 DeltaSink = Callable[[str], Awaitable[None]]
 """Receives streamed text, in order, as the final step produces it."""
@@ -259,6 +262,12 @@ class Pipeline(Generic[TIn, TOut]):
                         # 6: apply the failure policy.
                         if self._policy_for(step.name) is FailurePolicy.FAIL:
                             raise
+                        run_logger(_LOGGER, run_id=ctx.run_id, trace_id=trace_id).warning(
+                            "step %s failed with %s and was skipped by its failure policy",
+                            step.name,
+                            type(exc).__name__,
+                            extra={"step": step.name},
+                        )
                         degradations.append(
                             Degradation(
                                 step=step.name,

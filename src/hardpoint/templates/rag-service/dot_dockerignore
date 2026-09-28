@@ -1,0 +1,7 @@
+.env
+.git
+.hardpoint
+.venv
+artefacts
+__pycache__
+*.egg-info
