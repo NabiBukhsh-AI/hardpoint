@@ -109,6 +109,41 @@ def test_merge_is_deep_for_mappings() -> None:
     assert primary.options() == {"collection": "v3", "distance": "cosine"}
 
 
+def test_switching_a_component_type_replaces_the_block() -> None:
+    """An offline overlay swapping a provider must not inherit the old one's options.
+
+    Merged, ``fake_llm`` would receive ``api_key`` -- an unknown option -- and the
+    base's ``${env:OPENAI_API_KEY}`` would still demand a key the offline
+    environment never needs.
+    """
+    resolved = resolve(
+        base={
+            "providers": {
+                "llm": {"type": "openai_chat", "model": "m", "api_key": "${env:OPENAI_API_KEY}"}
+            }
+        },
+        env_file={"providers": {"llm": {"type": "fake_llm"}}},
+        environ={},
+    )
+    llm = resolved.config.providers.llm
+    assert llm is not None
+    assert llm.type == "fake_llm"
+    assert llm.options() == {}
+    assert "providers.llm.api_key" not in resolved.snapshot.paths()
+    assert resolved.snapshot.origin("providers.llm.type") is Layer.ENV_FILE
+
+
+def test_keeping_a_component_type_still_merges() -> None:
+    resolved = resolve(
+        base={"providers": {"llm": {"type": "openai_chat", "model": "a", "base_url": "u"}}},
+        env_file={"providers": {"llm": {"type": "openai_chat", "model": "b"}}},
+        environ={},
+    )
+    llm = resolved.config.providers.llm
+    assert llm is not None
+    assert llm.options() == {"model": "b", "base_url": "u"}
+
+
 def test_lists_replace_wholesale_rather_than_merging() -> None:
     """A production overlay must be able to *shorten* a list, not only extend it.
 
@@ -453,6 +488,48 @@ def test_error_remedy_points_at_the_tools_that_would_have_caught_it() -> None:
 # --------------------------------------------------------------------------- #
 # File loading                                                                #
 # --------------------------------------------------------------------------- #
+
+
+def test_env_references_resolve_inside_mappings_inside_lists() -> None:
+    """Guards are a list of mappings; a reference in one must still resolve."""
+    resolved = resolve(
+        base={"guards": {"output": [{"type": "moderation", "api_key": "${env:MOD_KEY}"}]}},
+        environ={"MOD_KEY": SECRET},
+    )
+    (guard,) = resolved.config.guards.output
+    assert guard.options() == {"api_key": SECRET}
+    assert SECRET not in json.dumps(resolved.snapshot.to_dict())
+
+
+def test_loaded_values_are_plain_strings(tmp_path: Path) -> None:
+    """The loader's position-tracking subclass must not leak into dumps."""
+    import yaml
+
+    write(tmp_path, "base.yaml", "project: {name: demo}\n")
+    data = load_config(tmp_path, env="dev", environ={}).snapshot.to_dict()
+    assert "name: demo" in yaml.safe_dump(data)
+
+
+def test_yaml_booleans_follow_yaml_1_2(tmp_path: Path) -> None:
+    """``on:`` is a key, not ``True``, as in ARCHITECTURE.md §15.2's own example.
+
+    PyYAML defaults to YAML 1.1, where on/off/yes/no are booleans. The retry
+    block the architecture documents would then fail validation with "keys
+    should be strings".
+    """
+    write(
+        tmp_path,
+        "base.yaml",
+        "providers:\n  llm:\n    type: x\n    region: no\n"
+        "    policies:\n      retry: {max_attempts: 4, on: [rate_limited]}\n"
+        "plugins: {discover: false}\n",
+    )
+    resolved = load_config(tmp_path, env="dev", environ={})
+    llm = resolved.config.providers.llm
+    assert llm is not None
+    assert llm.policies.retry.on == ("rate_limited",)
+    assert llm.options() == {"region": "no"}
+    assert resolved.config.plugins.discover is False
 
 
 def test_load_config_reads_base_and_environment_overlay(tmp_path: Path) -> None:

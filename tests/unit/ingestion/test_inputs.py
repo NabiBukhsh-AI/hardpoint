@@ -118,6 +118,23 @@ async def test_listing_yields_entries_in_sorted_order(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_a_relative_root_yields_absolute_file_uris(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Configuration says `root: docs`, relative to the project directory.
+
+    `Path.as_uri` refuses a relative path, so without resolving the root every
+    `hardpoint ingest run` in a generated project crashed on the first file.
+    """
+    corpus(tmp_path, {"docs/a.md": "hello"})
+    monkeypatch.chdir(tmp_path)
+    entries = [entry async for entry in LocalFileSource("docs").list()]
+
+    assert entries[0].id == "a.md"
+    assert entries[0].uri.startswith("file:")
+
+
+@pytest.mark.anyio
 async def test_listing_reports_a_revision_without_reading_content(tmp_path: Path) -> None:
     """Listing must be cheap: the whole source is listed on every run."""
     root = corpus(tmp_path, {"a.md": "hello"})
@@ -354,6 +371,28 @@ async def test_a_heading_starts_a_new_chunk() -> None:
     paths = [chunk.metadata["heading_path"] for chunk in chunks]
     assert any("Refunds" in str(path) for path in paths)
     assert any("Disputes" in str(path) for path in paths)
+
+
+@pytest.mark.anyio
+async def test_overlap_never_carries_across_a_heading() -> None:
+    """With overlap on, a new section must still open with its own heading.
+
+    Carrying the previous section's tail across a heading put that text *above*
+    the new heading, so the chunk took the previous section's heading path: a
+    chunk about disputes labelled as refunds. Every other heading test here ran
+    with ``overlap_tokens=0``, which is how it went unnoticed.
+    """
+    parsed = await MarkdownParser().parse(blob(MARKDOWN), build_run_context())
+    chunks = await RecursiveChunker(target_tokens=200, overlap_tokens=60).chunk(
+        parsed, build_run_context()
+    )
+
+    owners = {"issued monthly": "Billing", "30 days": "Refunds", "Raise a dispute": "Disputes"}
+    for chunk in chunks:
+        label = str(chunk.metadata["heading_path"]).split(HEADING_SEPARATOR)[-1]
+        for text, section in owners.items():
+            if text in chunk.text:
+                assert section == label, f"{section} text sits in a chunk labelled {label!r}"
 
 
 @pytest.mark.anyio

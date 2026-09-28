@@ -37,6 +37,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 from hardpoint.adapters._http import (
     DEFAULT_TIMEOUT_S,
@@ -62,7 +63,7 @@ from hardpoint.core.types import JsonValue, ModelId
 if TYPE_CHECKING:
     from hardpoint.core.context import RunContext
 
-__all__ = ["OpenAICompatibleChat"]
+__all__ = ["OpenAIChatConfig", "OpenAICompatibleChat", "build"]
 
 _FINISH_REASONS = {
     "stop": "stop",
@@ -400,3 +401,25 @@ class OpenAICompatibleChat:
     def __repr__(self) -> str:
         """Render the model id."""
         return f"OpenAICompatibleChat(model={self.model!r}, id={self.id!r})"
+
+
+class OpenAIChatConfig(BaseModel):
+    """Configuration for ``type: openai_chat``. Field meanings match the constructor."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str | None = None
+    context_window_tokens: int = Field(default=8192, gt=0)
+    max_output_tokens: int | None = Field(default=None, gt=0)
+    supports_tools: bool = False
+    supports_structured_output: bool = False
+    supports_vision: bool = False
+    timeout_s: float = Field(default=DEFAULT_TIMEOUT_S, gt=0)
+    model_id: str | None = None
+
+
+def build(config: OpenAIChatConfig) -> OpenAICompatibleChat:
+    """Registry factory for ``type: openai_chat``."""
+    return OpenAICompatibleChat(**config.model_dump())

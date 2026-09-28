@@ -72,8 +72,8 @@ class Generate:
             (ARCHITECTURE.md §6.2).
         abstention_text: What an abstention says. Supplied by the caller,
             because the wording is product voice and belongs in the generated
-            project (INSTRUCTIONS.md §7 **[LOCKED]**). The default here is a
-            neutral placeholder, not a product voice.
+            project (INSTRUCTIONS.md §7 **[LOCKED]**). ``None`` uses a neutral
+            placeholder, not a product voice.
         stream: Whether to stream. The answer is identical either way; streaming
             changes when the first token reaches the caller, not what is said.
         temperature: Sampling temperature, passed through.
@@ -92,9 +92,7 @@ class Generate:
         prompt: str = "answer",
         pipeline_name: str = "rag",
         no_context_policy: NoContextPolicy = "abstain",
-        abstention_text: str = (
-            "I could not find anything in the indexed documents that answers that."
-        ),
+        abstention_text: str | None = None,
         stream: bool = False,
         temperature: float | None = None,
         max_output_tokens: int | None = None,
@@ -107,7 +105,9 @@ class Generate:
         self.prompt = prompt
         self.pipeline_name = pipeline_name
         self.no_context_policy = no_context_policy
-        self.abstention_text = abstention_text
+        self.abstention_text = abstention_text or (
+            "I could not find anything in the indexed documents that answers that."
+        )
         self.stream = stream
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens

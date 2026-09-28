@@ -42,6 +42,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 from hardpoint.adapters._http import (
     DEFAULT_TIMEOUT_S,
@@ -69,7 +70,7 @@ from hardpoint.core.types import JsonValue
 if TYPE_CHECKING:
     from hardpoint.core.context import RunContext
 
-__all__ = ["QDRANT_FILTER_OPS", "QdrantIndex", "to_qdrant_filter"]
+__all__ = ["QDRANT_FILTER_OPS", "QdrantConfig", "QdrantIndex", "build", "to_qdrant_filter"]
 
 QDRANT_FILTER_OPS: Final = frozenset(
     {"eq", "ne", "in", "nin", "gt", "gte", "lt", "lte", "exists", "and", "or", "not"}
@@ -485,6 +486,38 @@ class QdrantIndex:
     def __repr__(self) -> str:
         """Render the collection name."""
         return f"QdrantIndex(collection={self.collection!r})"
+
+
+class QdrantConfig(BaseModel):
+    """Configuration for ``type: qdrant``.
+
+    Args:
+        collection: The collection name. Defaults to the key the index is
+            configured under.
+        url: Qdrant's base URL.
+        api_key: Sent as ``api-key``.
+        timeout_s: Transport timeout.
+        wait: Whether writes block until visible to a search.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    collection: str = "primary"
+    url: str = "http://localhost:6333"
+    api_key: str | None = None
+    timeout_s: float = Field(default=DEFAULT_TIMEOUT_S, gt=0)
+    wait: bool = True
+
+
+def build(config: QdrantConfig) -> QdrantIndex:
+    """Registry factory for ``type: qdrant``."""
+    return QdrantIndex(
+        config.collection,
+        url=config.url,
+        api_key=config.api_key,
+        timeout_s=config.timeout_s,
+        wait=config.wait,
+    )
 
 
 def _payload_for(record: IndexRecord) -> dict[str, Any]:

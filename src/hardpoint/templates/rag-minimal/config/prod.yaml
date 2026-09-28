@@ -1,0 +1,8 @@
+# Production overlay. Traces can hold user questions and document text, so
+# message content and chunk text are redacted by default here -- recording
+# everything would be a compliance trap (ARCHITECTURE.md §19).
+observability:
+  redact: [messages.content, chunk.text]
+
+budgets:
+  request: {max_llm_calls: 3, max_cost_usd: 0.10, deadline_s: 25}

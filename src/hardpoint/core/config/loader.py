@@ -83,6 +83,9 @@ _ENV_REFERENCE = re.compile(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 _DEFAULT_ENV: Final = "dev"
 
+_BOOL_TAG: Final = "tag:yaml.org,2002:bool"
+_YAML12_BOOL: Final = re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$")
+
 
 class _LocatedStr(str):
     """A string that remembers where in which file it was written.
@@ -118,6 +121,15 @@ def _positional_loader(source: str) -> type[yaml.SafeLoader]:
         return _LocatedStr(str(value), source=source, line=node.start_mark.line + 1)
 
     PositionalLoader.add_constructor("tag:yaml.org,2002:str", construct_located_str)
+
+    # YAML 1.2 booleans: only true/false. Under PyYAML's YAML 1.1 default, the
+    # key in ARCHITECTURE.md §15.2's own example -- `retry: {on: [transient]}` --
+    # loads as the boolean True, and `country: no` as False.
+    PositionalLoader.yaml_implicit_resolvers = {
+        first: [(tag, pattern) for tag, pattern in resolvers if tag != _BOOL_TAG]
+        for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+    }
+    PositionalLoader.add_implicit_resolver(_BOOL_TAG, _YAML12_BOOL, list("tTfF"))
     return PositionalLoader
 
 
@@ -172,12 +184,25 @@ def _deep_merge(
     wholesale. A list that merged element-wise would make ``guards.output``
     impossible to shorten in a production overlay, which is exactly the thing an
     overlay exists to do.
+
+    One exception among mappings: a component block whose ``type:`` changes is
+    replaced, not merged. Its options belong to the component, so an offline
+    overlay switching ``openai_chat`` to ``fake_llm`` must not inherit
+    ``api_key`` and ``base_url`` -- they would be unknown options for the new
+    component, and would demand environment variables it never reads.
     """
     result: dict[str, JsonValue] = dict(base)
     for key, value in overlay.items():
         path = f"{prefix}.{key}" if prefix else key
         existing = result.get(key)
-        if isinstance(value, dict) and isinstance(existing, dict):
+        switches_component = (
+            isinstance(value, dict)
+            and isinstance(existing, dict)
+            and "type" in value
+            and "type" in existing
+            and value["type"] != existing["type"]
+        )
+        if isinstance(value, dict) and isinstance(existing, dict) and not switches_component:
             result[key] = _deep_merge(existing, value, layer, origins, path)
             continue
 
@@ -290,21 +315,33 @@ def _interpolate(
     """
     result: dict[str, JsonValue] = {}
     for key, value in data.items():
-        path = f"{prefix}.{key}" if prefix else key
-        if isinstance(value, dict):
-            result[key] = _interpolate(value, environ, secret_paths, path)
-        elif isinstance(value, list):
-            result[key] = [
-                _interpolate_scalar(item, environ, secret_paths, path)
-                if isinstance(item, str)
-                else item
-                for item in value
-            ]
-        elif isinstance(value, str):
-            result[key] = _interpolate_scalar(value, environ, secret_paths, path)
-        else:
-            result[key] = value
+        path = f"{prefix}.{key}" if prefix else str(key)
+        result[str(key)] = _interpolate_value(value, environ, secret_paths, path)
     return result
+
+
+def _interpolate_value(
+    value: JsonValue, environ: Mapping[str, str], secret_paths: set[str], path: str
+) -> JsonValue:
+    """Interpolate any value, however nested -- including mappings inside lists.
+
+    Guards are configured as a list of mappings, and a reference inside one
+    would otherwise reach validation as the literal text ``${env:...}``.
+    """
+    if isinstance(value, dict):
+        return _interpolate(value, environ, secret_paths, path)
+    if isinstance(value, list):
+        # Redaction walks mappings, not list positions, so a secret anywhere
+        # inside a list marks the whole list: `guards.output` is redacted as a
+        # unit rather than leaking a key from its third element.
+        inside: set[str] = set()
+        items = [_interpolate_value(item, environ, inside, path) for item in value]
+        if inside:
+            secret_paths.add(path)
+        return items
+    if isinstance(value, str):
+        return _interpolate_scalar(value, environ, secret_paths, path)
+    return value
 
 
 def _interpolate_scalar(
@@ -324,7 +361,9 @@ def _interpolate_scalar(
     literal-looking API key appears in tracked YAML.
     """
     if not _ENV_REFERENCE.search(value):
-        return value
+        # A plain `str`: the position was only needed for this function's
+        # errors, and the private subclass must not leak into dumps.
+        return str(value)
 
     where = value.where() if isinstance(value, _LocatedStr) else path
     consumed_environment = False

@@ -155,15 +155,71 @@ class BuiltinEntry:
     contract_version: str = CONTRACT_VERSION
 
 
+def _entry(
+    key: str,
+    kind: Kind,
+    module: str,
+    *,
+    config_model: str,
+    factory: str = "build",
+    extra: str | None = None,
+) -> BuiltinEntry:
+    return BuiltinEntry(key, kind, module, factory, config_model, extra)
+
+
 # The static built-in table. **[LOCKED]** mechanism: lazy module paths, never an
-# import at module import time.
-#
-# It is empty in M0 because M0 ships no adapters, and an entry pointing at a
-# module that does not exist would resolve to "this is a bug in hardpoint" rather
-# than to anything useful. Each milestone appends its own adapters; the
-# machinery, the precedence rules and the error behaviour are complete and
-# tested now, against registrations made by the tests themselves.
-BUILTIN_COMPONENTS: Final[tuple[BuiltinEntry, ...]] = ()
+# import at module import time. A test resolves every row, so an entry pointing
+# at a module or name that does not exist fails CI rather than a user.
+BUILTIN_COMPONENTS: Final[tuple[BuiltinEntry, ...]] = (
+    _entry(
+        "openai_chat",
+        Kind.LLM,
+        "hardpoint.adapters.llm.openai_compatible",
+        config_model="OpenAIChatConfig",
+    ),
+    _entry(
+        "fake_llm",
+        Kind.LLM,
+        "hardpoint.testing.components",
+        factory="build_llm",
+        config_model="FakeLLMConfig",
+    ),
+    _entry(
+        "openai_embeddings",
+        Kind.EMBEDDINGS,
+        "hardpoint.adapters.embeddings.openai_compatible",
+        config_model="OpenAIEmbeddingsConfig",
+    ),
+    _entry(
+        "fake_embeddings",
+        Kind.EMBEDDINGS,
+        "hardpoint.testing.components",
+        factory="build_embeddings",
+        config_model="FakeEmbeddingsConfig",
+    ),
+    _entry("qdrant", Kind.INDEX, "hardpoint.adapters.index.qdrant", config_model="QdrantConfig"),
+    _entry(
+        "sqlite", Kind.INDEX, "hardpoint.adapters.index.sqlite", config_model="SqliteIndexConfig"
+    ),
+    _entry(
+        "memory",
+        Kind.INDEX,
+        "hardpoint.testing.components",
+        factory="build_index",
+        config_model="MemoryIndexConfig",
+    ),
+    _entry(
+        "fake_reranker",
+        Kind.RERANKER,
+        "hardpoint.testing.components",
+        factory="build_reranker",
+        config_model="FakeRerankerConfig",
+    ),
+    _entry(
+        "local_files", Kind.SOURCE, "hardpoint.ingestion.sources", config_model="LocalFilesConfig"
+    ),
+    _entry("sqlite", Kind.STATE, "hardpoint.ingestion.state", config_model="SqliteStateConfig"),
+)
 
 
 @dataclass(frozen=True)

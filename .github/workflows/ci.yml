@@ -96,3 +96,32 @@ jobs:
         run: .venv-bare/bin/python scripts/assert_bare_env.py
       - name: Import every hardpoint module
         run: .venv-bare/bin/python scripts/import_all.py
+
+  template-smoke:
+    name: Templates (wheel -> init -> install -> test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Build the wheel users will install
+        run: uv build --wheel --out-dir dist
+      - name: Install it into a clean environment
+        run: |
+          uv venv --python 3.11 .venv-smoke
+          uv pip install --python .venv-smoke dist/*.whl
+      - name: Generate, install and test every template
+        run: |
+          templates=$(.venv-smoke/bin/python -c "from hardpoint.cli.commands.init import TEMPLATES; print(' '.join(TEMPLATES))")
+          for template in $templates; do
+            echo "::group::$template"
+            .venv-smoke/bin/hardpoint init "smoke-$template" --template "$template"
+            uv pip install --python .venv-smoke -e "smoke-$template[dev]"
+            (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline doctor)
+            (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline ingest run)
+            (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline ask "How do I rotate an API key?")
+            (cd "smoke-$template" && ../.venv-smoke/bin/python -m pytest -q)
+            echo "::endgroup::"
+          done

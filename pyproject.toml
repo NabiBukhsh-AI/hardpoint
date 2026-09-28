@@ -39,11 +39,8 @@ Repository = "https://github.com/NabiBukhsh-AI/hardpoint"
 Issues = "https://github.com/NabiBukhsh-AI/hardpoint/issues"
 Changelog = "https://github.com/NabiBukhsh-AI/hardpoint/blob/main/CHANGELOG.md"
 
-# The console script is declared in M1, when cli/main.py exists. Declaring it
-# now would install a `hardpoint` command that raises ModuleNotFoundError.
-# See docs/backlog.md -> "console script entry point".
-# [project.scripts]
-# hardpoint = "hardpoint.cli.main:app"
+[project.scripts]
+hardpoint = "hardpoint.cli.main:app"
 
 # ARCHITECTURE.md §16.2. Extras are declared from day one so that the registry's
 # lazy table can name the exact install command in MissingDependencyError, even
@@ -93,6 +90,9 @@ include = ["src/hardpoint", "README.md", "CHANGELOG.md", "LICENSE"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# Templates are the generated project's code, linted by that project's own
+# tooling and exercised by tests/templates, not held to the library's rules.
+extend-exclude = ["src/hardpoint/templates/*/"]
 
 [tool.ruff.format]
 # README.md quotes composition snippets from ARCHITECTURE.md verbatim; the
@@ -187,6 +187,7 @@ ban-relative-imports = "parents"
 python_version = "3.11"
 strict = true
 files = ["src/hardpoint"]
+exclude = ["src/hardpoint/templates/"]
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
 warn_no_return = true
@@ -222,6 +223,7 @@ filterwarnings = ["error"]
 source = ["hardpoint"]
 branch = true
 parallel = true
+omit = ["*/hardpoint/templates/*"]
 
 [tool.coverage.paths]
 source = ["src/hardpoint", "*/site-packages/hardpoint"]

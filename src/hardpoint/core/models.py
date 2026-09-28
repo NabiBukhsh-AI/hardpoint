@@ -216,6 +216,8 @@ class ContextItem(BaseModel):
         citation_key: What appears in the rendered prompt, for example ``"1"``.
         included_text: The text actually included, which may be compressed or
             truncated relative to ``chunk.text``.
+        score: The relevance score it was selected on, for ``ask --explain``
+            and for evaluating context precision.
     """
 
     model_config = _MODEL_CONFIG
@@ -223,6 +225,7 @@ class ContextItem(BaseModel):
     chunk: Chunk
     citation_key: str
     included_text: str
+    score: float | None = None
 
 
 class DropRecord(BaseModel):
@@ -237,6 +240,7 @@ class DropRecord(BaseModel):
     chunk_id: str
     reason: Literal["token_budget", "duplicate", "below_threshold", "filtered", "compressed_out"]
     detail: str | None = None
+    score: float | None = None
 
 
 class ContextBundle(BaseModel):

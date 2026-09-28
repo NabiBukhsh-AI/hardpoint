@@ -27,6 +27,29 @@ carries a migration note here.
   `config show` could annotate paths that no longer exist.
 - `Deadline.check` reported `limit_value=0.0, observed=0.0`; it now reports how
   far past the deadline the run is.
+- `LocalFileSource` crashed on a relative `root` (`Path.as_uri` refuses one), so
+  `root: docs` -- the natural configuration -- failed on the first file. The
+  root is now resolved to an absolute path.
+- `RecursiveChunker` carried overlap across heading boundaries, putting the
+  previous section's tail *above* the next heading so the chunk took the
+  previous section's heading path. Overlap now applies only to size splits
+  inside a section.
+- `IngestReport.cost_usd` started as `None` and was only ever summed when it was
+  not, so every run reported "unpriced". It now starts at zero and becomes
+  `None` only when an unpriced embedding happened.
+- `SyncEngine` sent every chunk of a document in one embedding request, ignoring
+  `ingestion.embed_batch_size`.
+- The config loader parsed YAML 1.1 booleans, so the `on:` key in
+  `retry: {on: [...]}` -- ARCHITECTURE.md §15.2's own example -- loaded as
+  `True`. Only `true`/`false` are booleans now.
+- `${env:...}` inside a mapping inside a list (a guard spec) was not
+  interpolated, and a secret there would have been marked at a path the
+  redactor never visits. Interpolation is now fully recursive, and a secret
+  inside a list redacts the whole list.
+- Loaded config values kept a private `str` subclass, so `yaml.safe_dump` of a
+  snapshot failed.
+- SQLite connections in tests were never closed, which Python 3.13 reports as a
+  `ResourceWarning` and the suite treats as an error.
 
 ### Added
 
@@ -105,5 +128,33 @@ carries a migration note here.
   exported for third-party adapter authors.
 - `adapters.index.QdrantIndex`, over Qdrant's REST API and requiring no extra,
   with faithful filter translation and `contains` deliberately undeclared.
+- `adapters.index.SqliteVectorIndex` (`type: sqlite`): a vector index in one
+  file, standard library only, passing the full `VectorIndex` contract kit. What
+  `rag-minimal` starts with.
+- The built-in component table: `openai_chat`, `openai_embeddings`, `qdrant`,
+  `sqlite`, `local_files`, the `sqlite` state store, and `fake_llm`,
+  `fake_embeddings`, `memory` and `fake_reranker` for offline runs. Each
+  adapter module carries its `<Component>Config` and a `build` factory.
+- `runtime.Resources`, `build_resources`, `load_pipeline` and `answer_query`:
+  configuration to policy-wrapped components, and the one path from a question
+  to an `Answer` that the CLI, the service and the eval runner all share.
+- `runtime.wrapped`: `PolicyLanguageModel`, `PolicyEmbeddingModel`,
+  `PolicyVectorIndex` and `PolicyReranker`, applying each component's configured
+  retry, timeout, breaker, rate limit and fallback.
+- `recipes.naive`: retrieve, assemble, generate.
+- The `hardpoint` command: `init` (with `--diff`), `config show|schema|validate`,
+  `components list` (with `--describe` and `--resolved`), `ingest run|plan|status`,
+  `ask` (with `--explain` and `--json`), `doctor` (with `--live`) and `version`.
+- `templates/rag-minimal`: a project that ingests and answers offline with no
+  keys (`--env offline`) and against any OpenAI-compatible endpoint otherwise,
+  with its own passing test suite.
+- Config: `project` (name, `hardpoint_version`, `pipeline`, `prompts_dir`),
+  `ingestion.index`, `ingestion.state` and `ingestion.chunking`. A component
+  block whose `type:` changes in an overlay is replaced rather than merged.
+- `ContextItem.score` and `DropRecord.score`, so `ask --explain` shows why each
+  chunk was used or dropped.
+- `FakeEmbeddingModel(lexical=True)` and `FakeLanguageModel(extractive=True)`,
+  which make offline retrieval find the relevant passage and offline answers
+  quote it.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

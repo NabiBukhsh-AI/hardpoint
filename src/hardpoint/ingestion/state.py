@@ -38,12 +38,13 @@ from pathlib import Path
 from typing import Any, Final
 
 import anyio
+from pydantic import BaseModel, ConfigDict
 
 from hardpoint.core.errors import ConfigError, IngestionError
 from hardpoint.core.ports import ChunkRecord, DocumentRecord, IndexMeta
 from hardpoint.core.types import JsonValue, ModelId
 
-__all__ = ["SCHEMA_VERSION", "SqliteStateStore", "utc_now"]
+__all__ = ["SCHEMA_VERSION", "SqliteStateConfig", "SqliteStateStore", "build", "utc_now"]
 
 SCHEMA_VERSION: Final = 1
 """The manifest schema this release reads and writes.
@@ -442,6 +443,19 @@ class SqliteStateStore:
     def __repr__(self) -> str:
         """Render the manifest path."""
         return f"SqliteStateStore(path={self.path!r})"
+
+
+class SqliteStateConfig(BaseModel):
+    """Configuration for ``type: sqlite`` under ``ingestion.state``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = ".hardpoint/state.db"
+
+
+def build(config: SqliteStateConfig) -> SqliteStateStore:
+    """Registry factory for the ``sqlite`` state store."""
+    return SqliteStateStore(config.path)
 
 
 def _document_from_row(row: sqlite3.Row) -> DocumentRecord:

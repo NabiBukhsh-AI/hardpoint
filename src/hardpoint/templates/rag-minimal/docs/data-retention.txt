@@ -1,0 +1,13 @@
+Data retention
+
+Northwind keeps request logs for 30 days and audit logs for one year. Audit
+logs record who created, rotated or revoked an API key, who changed a billing
+setting, and who invited or removed a member.
+
+Deleting a workspace schedules all of its data for deletion after a 14 day
+grace period, during which the owner can restore it. After the grace period
+the data is removed from primary storage immediately and from backups within
+35 days.
+
+Customers on the enterprise plan can export audit logs to their own storage
+bucket daily.

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "{{ project_name }}"
+version = "0.1.0"
+description = "A retrieval-augmented question answering service built with hardpoint."
+requires-python = ">=3.11"
+dependencies = ["hardpoint>={{ hardpoint_version }}"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pipelines"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

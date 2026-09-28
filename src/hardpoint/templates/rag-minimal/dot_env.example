@@ -1,0 +1,7 @@
+# Copy to .env and fill in. .env is ignored by git; never commit a key.
+OPENAI_API_KEY=
+# Any OpenAI-compatible endpoint works: Ollama, vLLM, LM Studio, a gateway.
+# OPENAI_BASE_URL=http://localhost:11434/v1
+# LLM_MODEL=gpt-4o-mini
+# EMBED_MODEL=text-embedding-3-small
+# HARDPOINT_ENV=offline

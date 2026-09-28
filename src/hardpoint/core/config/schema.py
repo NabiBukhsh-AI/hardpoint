@@ -31,6 +31,7 @@ from hardpoint.core.types import JsonValue
 __all__ = [
     "CONFIG_VERSION",
     "BudgetsConfig",
+    "ChunkingConfig",
     "CircuitBreakerPolicyConfig",
     "ComponentSpec",
     "ContextConfig",
@@ -42,6 +43,7 @@ __all__ = [
     "ObservabilityConfig",
     "PluginsConfig",
     "PolicyConfig",
+    "ProjectConfig",
     "ProvidersConfig",
     "RateLimitPolicyConfig",
     "RequestBudgetConfig",
@@ -326,6 +328,23 @@ class BudgetsConfig(BaseModel):
     request: RequestBudgetConfig = Field(default_factory=RequestBudgetConfig)
 
 
+class ChunkingConfig(BaseModel):
+    """How documents are split. Sizes are in tokens.
+
+    Args:
+        target_tokens: The size to aim for.
+        overlap_tokens: How much of each chunk repeats at the start of the next.
+            Must be smaller than ``target_tokens``.
+        min_tokens: Smaller chunks are merged into a neighbour where possible.
+    """
+
+    model_config = _STRICT
+
+    target_tokens: int = Field(default=512, ge=8)
+    overlap_tokens: int = Field(default=64, ge=0)
+    min_tokens: int = Field(default=16, ge=0)
+
+
 class IngestionConfig(BaseModel):
     """Ingestion throughput and failure handling.
 
@@ -339,6 +358,10 @@ class IngestionConfig(BaseModel):
             quarantining it and continuing.
         quarantine_path: Where the artefact listing rejected documents and
             chunks is written, so a human can look at them.
+        index: Which configured index ingestion writes to.
+        state: The manifest store. Defaults to SQLite at
+            ``.hardpoint/state.db``.
+        chunking: Chunk sizes.
     """
 
     model_config = _STRICT
@@ -347,6 +370,30 @@ class IngestionConfig(BaseModel):
     concurrency: int = Field(default=4, ge=1)
     fail_fast: bool = False
     quarantine_path: str = "artefacts/quarantine.jsonl"
+    index: str = "primary"
+    state: ComponentSpec | None = None
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+
+
+class ProjectConfig(BaseModel):
+    """What a generated project records about itself.
+
+    Args:
+        name: The project's name.
+        hardpoint_version: The release that generated it. ``doctor`` warns on a
+            large skew and points at the migration notes (ARCHITECTURE.md §24).
+        pipeline: ``module:function`` building the pipeline from resources.
+            The CLI, the service and the eval runner all build through this one
+            factory, so evaluation can never drift from production (ADR-011).
+        prompts_dir: Where the project's prompts live.
+    """
+
+    model_config = _STRICT
+
+    name: str = "hardpoint-project"
+    hardpoint_version: str | None = None
+    pipeline: str = "pipelines.rag:build"
+    prompts_dir: str = "prompts"
 
 
 class EvalConfig(BaseModel):
@@ -383,6 +430,7 @@ class HardpointConfig(BaseModel):
 
     Args:
         version: Config schema version. Must equal :data:`CONFIG_VERSION`.
+        project: What the generated project records about itself.
         providers: Model providers per role.
         indexes: Named vector indexes.
         sources: Named ingestion sources.
@@ -398,6 +446,7 @@ class HardpointConfig(BaseModel):
     model_config = _STRICT
 
     version: int = CONFIG_VERSION
+    project: ProjectConfig = Field(default_factory=ProjectConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     indexes: dict[str, ComponentSpec] = Field(default_factory=dict)
     sources: dict[str, ComponentSpec] = Field(default_factory=dict)

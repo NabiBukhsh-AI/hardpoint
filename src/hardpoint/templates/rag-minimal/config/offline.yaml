@@ -1,0 +1,19 @@
+# `--env offline` (or HARDPOINT_ENV=offline): deterministic local fakes, no
+# keys, no network. What CI runs, and how to try the project before you have a
+# key. Switching a component's `type:` replaces its whole block, so nothing from
+# base.yaml's OpenAI settings leaks through.
+providers:
+  llm:
+    type: fake_llm
+  embeddings:
+    type: fake_embeddings        # hashed word stems: retrieval works, meaning is shallow
+
+indexes:
+  primary:
+    type: sqlite
+    path: .hardpoint/offline-index.db
+
+ingestion:
+  state:
+    type: sqlite
+    path: .hardpoint/offline-state.db

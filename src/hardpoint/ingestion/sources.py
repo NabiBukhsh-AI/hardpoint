@@ -29,12 +29,20 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 import anyio
+from pydantic import BaseModel, ConfigDict
 
 from hardpoint.core.errors import IngestionError
 from hardpoint.core.ports import SourceBlob, SourceEntry
 from hardpoint.core.types import JsonValue
 
-__all__ = ["DEFAULT_MEDIA_TYPE", "LocalFileSource", "Source", "media_type_for"]
+__all__ = [
+    "DEFAULT_MEDIA_TYPE",
+    "LocalFileSource",
+    "LocalFilesConfig",
+    "Source",
+    "build",
+    "media_type_for",
+]
 
 DEFAULT_MEDIA_TYPE = "application/octet-stream"
 """What an unrecognised extension reports as, so a parser can refuse it."""
@@ -144,7 +152,8 @@ class LocalFileSource:
         follow_symlinks: bool = False,
     ) -> None:
         self.id = source_id
-        self.root = Path(root)
+        # Absolute, so `uri` is a real file URI whatever the working directory.
+        self.root = Path(root).resolve()
         self.patterns = tuple(patterns)
         self.exclude = tuple(exclude)
         self.follow_symlinks = follow_symlinks
@@ -244,3 +253,30 @@ class LocalFileSource:
     def __repr__(self) -> str:
         """Render the source id and the directory it walks."""
         return f"LocalFileSource(id={self.id!r}, root={str(self.root)!r})"
+
+
+class LocalFilesConfig(BaseModel):
+    """Configuration for ``type: local_files`` under ``sources``.
+
+    ``source_id`` defaults to the key the source is configured under, which is
+    what makes it part of every document's identity.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    root: str = "docs"
+    source_id: str = "files"
+    patterns: tuple[str, ...] = ("**/*.md", "**/*.txt")
+    exclude: tuple[str, ...] = ()
+    follow_symlinks: bool = False
+
+
+def build(config: LocalFilesConfig) -> LocalFileSource:
+    """Registry factory for ``type: local_files``."""
+    return LocalFileSource(
+        config.root,
+        source_id=config.source_id,
+        patterns=config.patterns,
+        exclude=config.exclude,
+        follow_symlinks=config.follow_symlinks,
+    )

@@ -185,7 +185,8 @@ class SyncEngine:
         quarantine_path: Where the rejection artefact is written.
         price_per_million_embed_tokens: Used for the ``--plan`` estimate. ``None``
             means unpriced, and the plan says so rather than inventing a figure.
-            The pricing table that supplies this properly is M2.
+        embed_batch_size: Texts per embedding call. A 200-chunk document is
+            several calls, not one request the provider rejects as too large.
 
     Raises:
         ValueError: If no parsers were given. A sync engine that cannot parse
@@ -207,6 +208,7 @@ class SyncEngine:
         fail_fast: bool = False,
         quarantine_path: str | Path = "artefacts/quarantine.jsonl",
         price_per_million_embed_tokens: float | None = None,
+        embed_batch_size: int = 128,
     ) -> None:
         if not parsers:
             raise ValueError(
@@ -225,6 +227,7 @@ class SyncEngine:
         self.fail_fast = fail_fast
         self.quarantine_path = Path(quarantine_path)
         self.price_per_million_embed_tokens = price_per_million_embed_tokens
+        self.embed_batch_size = max(1, embed_batch_size)
 
     # ----------------------------------------------------------------- #
     # Steps 1-3: list, load, diff                                       #
@@ -553,15 +556,19 @@ class SyncEngine:
         outcome.chunks_reused = len(kept) - len(to_embed)
 
         vectors: dict[str, tuple[float, ...]] = {}
-        if to_embed:
-            result = await self.embedder.embed([chunk.text for chunk in to_embed], "document", ctx)
-            vectors = {
-                chunk.id: vector for chunk, vector in zip(to_embed, result.vectors, strict=True)
-            }
-            outcome.chunks_embedded = len(to_embed)
-            outcome.embed_calls = result.usage.calls
-            outcome.embed_tokens = result.usage.embed_tokens
-            outcome.cost_usd = result.usage.cost_usd
+        for start in range(0, len(to_embed), self.embed_batch_size):
+            batch = to_embed[start : start + self.embed_batch_size]
+            result = await self.embedder.embed([chunk.text for chunk in batch], "document", ctx)
+            vectors.update(
+                (chunk.id, vector) for chunk, vector in zip(batch, result.vectors, strict=True)
+            )
+            outcome.chunks_embedded += len(batch)
+            outcome.embed_calls += result.usage.calls
+            outcome.embed_tokens += result.usage.embed_tokens
+            if result.usage.cost_usd is None or outcome.cost_usd is None:
+                outcome.cost_usd = None
+            else:
+                outcome.cost_usd += result.usage.cost_usd
             ctx.usage.record(
                 "ingest.embed",
                 calls=result.usage.calls,
@@ -735,8 +742,8 @@ def _fold(report: IngestReport, outcome: _DocumentOutcome) -> None:
     report.quarantine.extend(outcome.quarantine)
 
     # An unpriced embedding makes the run's total unknown rather than
-    # understated (INSTRUCTIONS.md §13.8).
+    # understated (INSTRUCTIONS.md §13.8), and unknown stays unknown.
     if outcome.chunks_embedded and outcome.cost_usd is None:
         report.cost_usd = None
-    elif report.cost_usd is not None and outcome.cost_usd is not None:
-        report.cost_usd = (report.cost_usd or 0.0) + outcome.cost_usd
+    elif report.cost_usd is not None:
+        report.cost_usd += outcome.cost_usd or 0.0

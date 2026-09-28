@@ -68,7 +68,8 @@ async def build_toy_async(config: BaseModel) -> Toy:
 
 @pytest.fixture
 def registry() -> ComponentRegistry:
-    return ComponentRegistry()
+    """A registry with no built-ins, so each test sees only what it registers."""
+    return ComponentRegistry(())
 
 
 # --------------------------------------------------------------------------- #
@@ -108,11 +109,7 @@ def test_builtin_table_holds_strings_not_callables() -> None:
 
 
 def test_builtin_table_is_internally_consistent() -> None:
-    """Keys are unique per kind and follow the naming convention (§4).
-
-    Vacuous while the table is empty in M0, and gains teeth the moment M1 adds
-    its first adapter. That is the point of writing it now.
-    """
+    """Keys are unique per kind and follow the naming convention (§4)."""
     seen: set[tuple[Kind, str]] = set()
     for entry in BUILTIN_COMPONENTS:
         identity = (entry.kind, entry.key)
@@ -120,7 +117,17 @@ def test_builtin_table_is_internally_consistent() -> None:
         seen.add(identity)
         assert entry.key == entry.key.lower()
         assert " " not in entry.key
-        assert entry.module.startswith("hardpoint.adapters.")
+        assert entry.module.startswith("hardpoint.")
+        assert not entry.module.startswith("hardpoint.core"), "core registers nothing of its own"
+
+
+@pytest.mark.parametrize("entry", BUILTIN_COMPONENTS, ids=lambda e: f"{e.kind.value}:{e.key}")
+def test_every_builtin_resolves(entry: BuiltinEntry) -> None:
+    """A row naming a module or attribute that does not exist fails here, not for a user."""
+    registration = ComponentRegistry().resolve(entry.kind, entry.key)
+    assert callable(registration.factory)
+    assert issubclass(registration.config_model, BaseModel)
+    assert registration.config_model.model_config.get("extra") == "forbid"
 
 
 def test_keys_and_describe_import_nothing(registry: ComponentRegistry) -> None:
@@ -611,7 +618,7 @@ def test_registry_is_not_a_singleton() -> None:
 
     first, second = ComponentRegistry(), ComponentRegistry()
     first.register("only_here", kind=Kind.LLM, factory=build_toy, config_model=ToyConfig)
-    assert second.keys(Kind.LLM) == []
+    assert "only_here" not in second.keys(Kind.LLM)
 
 
 def test_with_builtins_copies_project_registrations(registry: ComponentRegistry) -> None:

@@ -142,6 +142,7 @@ class ContextAssembler:
                 chunk=retrieved.chunk,
                 citation_key=self._citation_key(position, retrieved),
                 included_text=retrieved.chunk.text,
+                score=retrieved.score,
             )
             for position, retrieved in enumerate(ordered)
         ]
@@ -222,6 +223,7 @@ class ContextAssembler:
                         chunk_id=retrieved.chunk.id,
                         reason="duplicate",
                         detail="Identical text was already included.",
+                        score=retrieved.score,
                     )
                 )
                 continue
@@ -236,6 +238,7 @@ class ContextAssembler:
                             f"{cost} tokens would exceed the {self.token_budget}-token "
                             f"budget with {self.token_budget - used} remaining."
                         ),
+                        score=retrieved.score,
                     )
                 )
                 continue
@@ -278,9 +281,10 @@ class ContextAssembler:
         """Render one context item, including its citation marker and source."""
         header = f"[{key}]"
         if self.include_metadata:
-            source = retrieved.chunk.metadata.get("source_uri") or retrieved.chunk.metadata.get(
-                "path"
-            )
+            # The short relative path when there is one: a full file URI spends
+            # tokens and puts the host's directory layout into the prompt.
+            metadata = retrieved.chunk.metadata
+            source = metadata.get("path") or metadata.get("source_uri")
             if source:
                 header = f"{header} source: {source}"
         return f"{header}\n{text}"

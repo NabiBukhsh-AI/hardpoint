@@ -31,8 +31,9 @@ kept to the heading trail and nothing else.
 
 ## Overlap
 
-Consecutive chunks repeat the last ``overlap_tokens`` of the previous chunk, so
-an answer spanning a boundary is not lost by whichever side missed it. Overlap
+Consecutive chunks within a section repeat the last ``overlap_tokens`` of the
+previous chunk, so an answer spanning a boundary is not lost by whichever side
+missed it. A heading boundary carries no overlap: a new topic starts clean. Overlap
 costs storage and embedding spend linearly, which is why it defaults to a small
 fraction of the target rather than to a quarter of it.
 """
@@ -269,14 +270,14 @@ class RecursiveChunker:
         current: list[_Piece] = []
         current_tokens = 0
 
-        def flush() -> None:
+        def flush(*, carry: bool) -> None:
             nonlocal current, current_tokens
             if not current:
                 return
             body = "\n\n".join(piece.text for piece in current)
             span = CharSpan(start=current[0].span.start, end=current[-1].span.end)
             chunks.append((body, span, current[0].headings))
-            current = self._carry_overlap(current)
+            current = self._carry_overlap(current) if carry else []
             current_tokens = sum(piece.tokens for piece in current)
 
         for piece in pieces:
@@ -285,10 +286,16 @@ class RecursiveChunker:
             # is backwards: a deeper heading has a *longer* trail than the text
             # above it, so `## Refunds` under `# Billing` never split and a whole
             # document collapsed into one chunk labelled with its first heading.
-            starts_a_topic = bool(current) and piece.is_heading
-            over_target = bool(current) and current_tokens + piece.tokens > self.target_tokens
-            if starts_a_topic or over_target:
-                flush()
+            #
+            # A new topic carries no overlap. Carried text would sit *above* the
+            # new heading, so the chunk would open with the previous section and
+            # take its heading path -- mislabelled, and the label is what makes a
+            # chunk retrievable. Overlap is for size splits inside a section,
+            # where an answer can straddle the cut.
+            if current and piece.is_heading:
+                flush(carry=False)
+            elif current and current_tokens + piece.tokens > self.target_tokens:
+                flush(carry=True)
 
             current.append(piece)
             current_tokens += piece.tokens

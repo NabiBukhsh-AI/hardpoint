@@ -26,6 +26,14 @@ from hardpoint.runtime.policies import (
     backoff_delay,
     is_retryable,
 )
+from hardpoint.runtime.resources import (
+    Resources,
+    answer_query,
+    build_resources,
+    build_source,
+    load_pipeline,
+    new_run_id,
+)
 from hardpoint.runtime.step import (
     FailurePolicy,
     PipelineInfo,
@@ -49,16 +57,22 @@ __all__ = [
     "PipelineRun",
     "PolicyChain",
     "RateLimit",
+    "Resources",
     "Retry",
     "Step",
     "StepInfo",
     "StepResult",
     "Timeout",
+    "answer_query",
     "as_step",
     "backoff_delay",
+    "build_resources",
+    "build_source",
     "gather_bounded",
     "gather_tolerant",
     "is_retryable",
+    "load_pipeline",
+    "new_run_id",
     "step_type_name",
     "unwrap",
 ]

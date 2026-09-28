@@ -26,6 +26,7 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field
 
 from hardpoint.adapters._http import (
     DEFAULT_TIMEOUT_S,
@@ -44,7 +45,7 @@ from hardpoint.core.types import JsonValue, ModelId
 if TYPE_CHECKING:
     from hardpoint.core.context import RunContext
 
-__all__ = ["OpenAICompatibleEmbeddings"]
+__all__ = ["OpenAICompatibleEmbeddings", "OpenAIEmbeddingsConfig", "build"]
 
 
 class OpenAICompatibleEmbeddings:
@@ -222,3 +223,22 @@ class OpenAICompatibleEmbeddings:
     def __repr__(self) -> str:
         """Render the model id and width."""
         return f"OpenAICompatibleEmbeddings(model={self.model!r}, dimensions={self.dimensions})"
+
+
+class OpenAIEmbeddingsConfig(BaseModel):
+    """Configuration for ``type: openai_embeddings``. Field meanings match the constructor."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    dimensions: int = Field(gt=0)
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str | None = None
+    request_dimensions: bool = False
+    timeout_s: float = Field(default=DEFAULT_TIMEOUT_S, gt=0)
+    model_id: str | None = None
+
+
+def build(config: OpenAIEmbeddingsConfig) -> OpenAICompatibleEmbeddings:
+    """Registry factory for ``type: openai_embeddings``."""
+    return OpenAICompatibleEmbeddings(**config.model_dump())

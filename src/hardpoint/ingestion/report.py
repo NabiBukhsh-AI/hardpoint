@@ -128,7 +128,7 @@ class IngestReport(BaseModel):
 
     embed_calls: int = 0
     embed_tokens: int = 0
-    cost_usd: float | None = None
+    cost_usd: float | None = 0.0
 
     epoch_before: int = 0
     epoch_after: int = 0

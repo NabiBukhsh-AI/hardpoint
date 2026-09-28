@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import struct
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -72,6 +73,7 @@ __all__ = [
     "RecordingTracer",
     "ScriptedResponse",
     "deterministic_vector",
+    "lexical_vector",
 ]
 
 Metric = Literal["cosine", "dot", "euclidean"]
@@ -191,6 +193,10 @@ class FakeLanguageModel:
             retry, fallback and degradation paths.
         cost_per_call: Reported cost per call, or ``None`` to model an unpriced
             model.
+        extractive: When no script matches, answer by quoting the first cited
+            passage in the prompt (``[1] ...``) instead of echoing a hash. Makes
+            an offline demo readable and gives a groundedness check something
+            genuinely grounded to find.
     """
 
     def __init__(
@@ -201,8 +207,10 @@ class FakeLanguageModel:
         capabilities: ModelCapabilities | None = None,
         fail_with: Exception | None = None,
         cost_per_call: float | None = 0.0,
+        extractive: bool = False,
     ) -> None:
         self.id = model_id
+        self._extractive = extractive
         self._responses = tuple(responses)
         self._capabilities = capabilities or ModelCapabilities(
             context_window_tokens=32_000,
@@ -252,6 +260,11 @@ class FakeLanguageModel:
         for response in self._responses:
             if response.match is None or response.match in rendered:
                 return response
+        if self._extractive:
+            quoted = _first_passage(rendered)
+            if quoted is not None:
+                key, sentence = quoted
+                return ScriptedResponse(text=f"{sentence} [{key}]", cost_usd=self._cost_per_call)
         digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()[:16]
         return ScriptedResponse(text=f"fake answer {digest}", cost_usd=self._cost_per_call)
 
@@ -317,9 +330,63 @@ class FakeLanguageModel:
         return iterator()
 
 
+# "[1] source: ...", then the passage, up to the next "[n]" or the closing tag.
+_CITED_PASSAGE = re.compile(
+    r"^\[([^\]\n]+)\][^\n]*\n(.+?)(?=^\[[^\]\n]+\]|</retrieved_context>|\Z)", re.M | re.S
+)
+_MIN_SENTENCE_WORDS = 5
+
+
+def _first_passage(rendered: str) -> tuple[str, str] | None:
+    """Return ``(citation key, first real sentence)`` of the first passage in a prompt.
+
+    Skips heading lines -- a chunk opens with its heading trail -- by taking the
+    first sentence of at least five words.
+    """
+    for match in _CITED_PASSAGE.finditer(rendered):
+        for paragraph in re.split(r"\n\s*\n", match.group(2)):
+            body = " ".join(line.strip() for line in paragraph.splitlines() if line.strip())
+            for sentence in re.split(r"(?<=[.!?])\s+", body):
+                if len(sentence.split()) >= _MIN_SENTENCE_WORDS:
+                    return match.group(1), sentence[:300]
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Embeddings                                                                  #
 # --------------------------------------------------------------------------- #
+
+
+_WORD = re.compile(r"[a-z0-9]+")
+_STOPWORDS = frozenset(
+    {
+        "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from",
+        "how", "i", "in", "is", "it", "my", "of", "on", "or", "our", "the", "this", "to",
+        "what", "when", "where", "which", "who", "why", "will", "with", "you", "your",
+    }
+)  # fmt: skip
+
+
+def lexical_vector(text: str, dimensions: int, *, salt: str = "") -> tuple[float, ...]:
+    """Return a unit vector from hashed word stems, so similar wording scores high.
+
+    Feature hashing over the first five letters of each non-stopword -- crude,
+    but "rotate", "rotating" and "rotation" land together, which is enough for
+    an offline demo to retrieve the passage a question is about and for an eval
+    suite to notice when retrieval gets worse. A small hash-derived component
+    keeps the vector non-zero and keeps query and document embeddings distinct.
+    """
+    counts = [0.0] * dimensions
+    for word in _WORD.findall(normalise_text(text).lower()):
+        if word in _STOPWORDS:
+            continue
+        digest = hashlib.sha256(word[:5].encode("utf-8")).digest()
+        position = int.from_bytes(digest[:4], "big") % dimensions
+        counts[position] += 1.0 if digest[4] & 1 else -1.0
+    noise = deterministic_vector(text, dimensions, salt=salt)
+    mixed = [count + 0.05 * jitter for count, jitter in zip(counts, noise, strict=True)]
+    norm = math.sqrt(sum(value * value for value in mixed))
+    return tuple(value / norm for value in mixed)
 
 
 class FakeEmbeddingModel:
@@ -335,6 +402,9 @@ class FakeEmbeddingModel:
         model_id: What to report as the model, and what the ingestion manifest
             records. Change it in a test to simulate switching models.
         fail_with: An exception to raise instead of embedding.
+        lexical: Derive vectors from hashed word stems (:func:`lexical_vector`)
+            so texts sharing words score as similar. Off by default, where
+            vectors are unrelated to meaning; on for offline demos and evals.
     """
 
     def __init__(
@@ -343,10 +413,12 @@ class FakeEmbeddingModel:
         *,
         model_id: ModelId = "fake/embedding-model",
         fail_with: Exception | None = None,
+        lexical: bool = False,
     ) -> None:
         self.id = model_id
         self.dimensions = dimensions
         self._fail_with = fail_with
+        self._vector = lexical_vector if lexical else deterministic_vector
 
         self.calls: list[tuple[tuple[str, ...], EmbedKind]] = []
 
@@ -366,7 +438,7 @@ class FakeEmbeddingModel:
         if self._fail_with is not None:
             raise self._fail_with
 
-        vectors = tuple(deterministic_vector(text, self.dimensions, salt=kind) for text in texts)
+        vectors = tuple(self._vector(text, self.dimensions, salt=kind) for text in texts)
         return EmbedResult(
             vectors=vectors,
             model_id=self.id,

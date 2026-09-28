@@ -27,6 +27,7 @@ exercise the SQL the guarantees actually depend on.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -122,8 +123,10 @@ def paragraphs(count: int, *, marker: str = "para") -> str:
 
 
 @pytest.fixture
-def harness(tmp_path: Path) -> Harness:
-    return Harness(tmp_path)
+async def harness(tmp_path: Path) -> AsyncIterator[Harness]:
+    built = Harness(tmp_path)
+    yield built
+    await built.state.close()
 
 
 # --------------------------------------------------------------------------- #
