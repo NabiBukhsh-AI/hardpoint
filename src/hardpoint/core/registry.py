@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import difflib
 import importlib
+import importlib.util
 import warnings
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -144,6 +145,11 @@ class BuiltinEntry:
         extra: The pip extra that installs this component's dependency, or
             ``None`` when it needs nothing beyond the base install.
         contract_version: The port contract version the adapter targets.
+        requires: Top-level modules the extra installs. Checked with
+            ``importlib.util.find_spec`` -- which imports nothing -- before the
+            adapter module is loaded, because an adapter imports its SDK inside
+            its factory (INSTRUCTIONS.md �3), so importing the module alone
+            cannot reveal that the extra is missing.
     """
 
     key: str
@@ -153,6 +159,7 @@ class BuiltinEntry:
     config_model: str
     extra: str | None = None
     contract_version: str = CONTRACT_VERSION
+    requires: tuple[str, ...] = ()
 
 
 def _entry(
@@ -163,8 +170,9 @@ def _entry(
     config_model: str,
     factory: str = "build",
     extra: str | None = None,
+    requires: tuple[str, ...] = (),
 ) -> BuiltinEntry:
-    return BuiltinEntry(key, kind, module, factory, config_model, extra)
+    return BuiltinEntry(key, kind, module, factory, config_model, extra, requires=requires)
 
 
 # The static built-in table. **[LOCKED]** mechanism: lazy module paths, never an
@@ -219,7 +227,33 @@ BUILTIN_COMPONENTS: Final[tuple[BuiltinEntry, ...]] = (
         "local_files", Kind.SOURCE, "hardpoint.ingestion.sources", config_model="LocalFilesConfig"
     ),
     _entry("sqlite", Kind.STATE, "hardpoint.ingestion.state", config_model="SqliteStateConfig"),
-)
+    _entry("memory", Kind.CACHE, "hardpoint.adapters.cache.memory",
+           config_model="MemoryCacheConfig"),
+    _entry("file", Kind.CACHE, "hardpoint.adapters.cache.file", config_model="FileCacheConfig"),
+    _entry("redis", Kind.CACHE, "hardpoint.adapters.cache.redis",
+           config_model="RedisCacheConfig", extra="redis", requires=("redis",)),
+    _entry("noop", Kind.TRACER, "hardpoint.observability.tracing",
+           factory="build_noop", config_model="NoOpTracerConfig"),
+    _entry("console", Kind.TRACER, "hardpoint.observability.tracing",
+           factory="build_console", config_model="ConsoleTracerConfig"),
+    _entry("otel", Kind.TRACER, "hardpoint.adapters.tracing.otel",
+           factory="build_tracer", config_model="OTelConfig", extra="otel",
+           requires=("opentelemetry",)),
+    _entry("noop", Kind.METRICS, "hardpoint.observability.metrics",
+           factory="build_noop", config_model="NoOpMetricsConfig"),
+    _entry("memory", Kind.METRICS, "hardpoint.observability.metrics",
+           factory="build_memory", config_model="InMemoryMetricsConfig"),
+    _entry("otel", Kind.METRICS, "hardpoint.adapters.tracing.otel",
+           factory="build_metrics", config_model="OTelConfig", extra="otel",
+           requires=("opentelemetry",)),
+    _entry("injection_heuristic", Kind.GUARD, "hardpoint.guards.injection",
+           config_model="InjectionGuardConfig"),
+    _entry("input_shape", Kind.GUARD, "hardpoint.guards.injection",
+           factory="build_input_shape", config_model="InputShapeConfig"),
+    _entry("groundedness", Kind.GUARD, "hardpoint.guards.groundedness",
+           config_model="GroundednessGuardConfig"),
+    _entry("schema", Kind.GUARD, "hardpoint.guards.schema", config_model="SchemaGuardConfig"),
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -249,6 +283,11 @@ class Registration:
     module: str
     source: Source
     contract_version: str = CONTRACT_VERSION
+
+
+def _installed(module: str) -> bool:
+    """Whether a top-level module can be imported, without importing it."""
+    return importlib.util.find_spec(module) is not None
 
 
 class ComponentRegistry:
@@ -496,6 +535,9 @@ class ComponentRegistry:
         This is the only place an adapter module is imported, and it happens on
         first use rather than at import time.
         """
+        missing = [name for name in entry.requires if not _installed(name)]
+        if missing:
+            raise self._import_failure(entry, ModuleNotFoundError(name=missing[0]), config_path)
         try:
             module = importlib.import_module(entry.module)
         except ModuleNotFoundError as exc:

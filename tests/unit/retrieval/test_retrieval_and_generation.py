@@ -23,8 +23,8 @@ import pytest
 
 from hardpoint.core.errors import ConfigError, RetrievalError
 from hardpoint.core.filters import F
-from hardpoint.core.models import CharSpan, Chunk, RetrievedChunk, TrustLevel
-from hardpoint.core.ports import IndexRecord
+from hardpoint.core.models import Answer, CharSpan, Chunk, RetrievedChunk, TrustLevel
+from hardpoint.core.ports import GenerationDelta, IndexRecord
 from hardpoint.generation import Generate, InMemoryPromptStore, PromptTemplate, render_template
 from hardpoint.retrieval import (
     DEFAULT_PREAMBLE,
@@ -35,6 +35,7 @@ from hardpoint.retrieval import (
     citations_for,
 )
 from hardpoint.testing import (
+    FakeCache,
     FakeEmbeddingModel,
     FakeLanguageModel,
     InMemoryVectorIndex,
@@ -613,14 +614,68 @@ async def test_streaming_produces_the_same_answer() -> None:
 
 
 @pytest.mark.anyio
-async def test_stream_deltas_yields_text_as_it_arrives() -> None:
-    """What a service's SSE endpoint consumes."""
+async def test_stream_events_yields_text_as_it_arrives_then_the_answer() -> None:
+    """What a service's SSE endpoint consumes, through ``Pipeline(on_delta=...)``."""
     step = Generate(FakeLanguageModel([ScriptedResponse("one two three")]), prompts())
     assembled = await assemble(retrieved("body"))
 
-    pieces = [piece async for piece in step.stream_deltas(assembled, build_run_context())]
-    assert "".join(pieces) == "one two three"
+    events = [event async for event in step.stream_events(assembled, build_run_context())]
+    pieces, final = events[:-1], events[-1]
+    assert all(isinstance(piece, str) for piece in pieces)
+    assert "".join(str(piece) for piece in pieces) == "one two three"
     assert len(pieces) > 1, "the point of streaming is more than one delta"
+    assert isinstance(final, Answer)
+    assert final.text == "one two three"
+    assert final.citations, "the terminal event carries the citations"
+
+
+@pytest.mark.anyio
+async def test_a_streamed_answer_without_provider_usage_is_estimated_not_zero() -> None:
+    class Silent(FakeLanguageModel):
+        def stream(self, req: Any, ctx: Any) -> Any:
+            async def deltas() -> Any:
+                yield GenerationDelta(text="hello there")
+
+            return deltas()
+
+    answer = await Generate(Silent(), prompts(), stream=True)(
+        await assemble(retrieved("body")), build_run_context()
+    )
+    usage = answer.usage.by_step["generate"]
+    assert usage.estimated
+    assert usage.completion_tokens > 0
+    assert usage.prompt_tokens > 0
+
+
+@pytest.mark.anyio
+async def test_generation_cache_serves_a_repeat_and_misses_on_a_new_prompt_version() -> None:
+    """``gen:`` keys hold the prompt version: an edited prompt never serves a stale answer."""
+    cache = FakeCache()
+    model = FakeLanguageModel([ScriptedResponse("cached answer")])
+    assembled = await assemble(retrieved("body"))
+
+    store = prompts()
+    step = Generate(model, store, cache=True)
+    first = await step(assembled, build_run_context(shared_cache=cache))
+    second = await step(assembled, build_run_context(shared_cache=cache))
+    assert (first.text, second.text) == ("cached answer", "cached answer")
+    assert model.call_count == 1, "the repeat was served from the cache"
+    assert second.usage.by_step["generate"].calls == 0
+
+    store.add("answer", "Edited. {{ context }} {{ question }}")
+    await Generate(model, store, cache=True)(assembled, build_run_context(shared_cache=cache))
+    assert model.call_count == 2, "a new prompt version misses"
+
+
+@pytest.mark.anyio
+async def test_generation_cache_is_off_by_default() -> None:
+    cache = FakeCache()
+    model = FakeLanguageModel([ScriptedResponse("x")])
+    assembled = await assemble(retrieved("body"))
+    for _ in range(2):
+        await Generate(model, prompts())(assembled, build_run_context(shared_cache=cache))
+    assert model.call_count == 2
+    assert cache.sets == 0
 
 
 @pytest.mark.anyio

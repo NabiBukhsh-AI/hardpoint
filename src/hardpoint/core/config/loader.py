@@ -517,10 +517,15 @@ def resolve(
 
     origins: dict[str, Layer] = {}
     merged: dict[str, JsonValue] = {}
+    env_vars = parse_env_overrides(environment)
+    if environment.get("HARDPOINT_DEBUG", "").lower() in {"1", "true", "yes"}:
+        # The documented switch (ARCHITECTURE.md §21), as shorthand for
+        # HARDPOINT__OBSERVABILITY__DEBUG=true, in the same layer.
+        env_vars = _deep_merge(env_vars, {"observability": {"debug": True}}, Layer.ENV_VARS, {})
     for layer, contribution in (
         (Layer.BASE_FILE, base),
         (Layer.ENV_FILE, env_file),
-        (Layer.ENV_VARS, parse_env_overrides(environment)),
+        (Layer.ENV_VARS, env_vars),
         (Layer.OVERRIDES, overrides),
     ):
         if contribution:

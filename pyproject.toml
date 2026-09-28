@@ -59,9 +59,14 @@ chroma = ["chromadb>=0.5"]
 opensearch = ["opensearch-py>=2.6"]
 cohere = ["cohere>=5.5"]
 parsers = ["pypdf>=4.2", "python-docx>=1.1", "beautifulsoup4>=4.12"]
-otel = ["opentelemetry-api>=1.25", "opentelemetry-sdk>=1.25"]
+otel = [
+  "opentelemetry-api>=1.27",
+  "opentelemetry-sdk>=1.27",
+  "opentelemetry-exporter-otlp-proto-http>=1.27",
+]
 redis = ["redis>=5.0"]
 serve = ["fastapi>=0.111", "uvicorn>=0.30"]
+eval-judge = []
 
 [dependency-groups]
 dev = [
@@ -71,6 +76,11 @@ dev = [
   "pytest>=8.2",
   "pytest-cov>=5.0",
   "types-pyyaml>=6.0",
+  # Exercise the otel adapter and the service template in the library's own
+  # suite. The bare-environment CI job proves the base install stays without them.
+  "opentelemetry-sdk>=1.27",
+  "fastapi>=0.111",
+  "uvicorn>=0.30",
 ]
 
 [tool.hatch.version]
@@ -155,18 +165,19 @@ ignore = [
 ]
 # Fakes and adapters take `ctx` because the port signature requires it, whether
 # or not that particular implementation reads it. ARG002 would fire on every one.
-"src/hardpoint/testing/**" = ["S101", "ARG002"]
+"src/hardpoint/testing/**" = ["S101", "ARG002", "PLR2004"]
 "src/hardpoint/adapters/**" = ["ARG002"]
 "src/hardpoint/ingestion/**" = ["ARG002"]
 "src/hardpoint/retrieval/**" = ["ARG002"]
 "src/hardpoint/generation/**" = ["ARG002"]
+"src/hardpoint/guards/**" = ["ARG002"]
 # The no-op implementations take the arguments their port declares and discard
 # them. That is the entire point, so ARG002 fires on every method.
 # Every policy has the same run(operation, call, ctx) signature so the chain can
 # compose them uniformly; not all of them read every argument.
 "src/hardpoint/runtime/policies.py" = ["ARG002"]
-"src/hardpoint/observability/tracing.py" = ["ARG002"]
-"src/hardpoint/observability/metrics.py" = ["ARG002"]
+"src/hardpoint/observability/tracing.py" = ["ARG001", "ARG002"]
+"src/hardpoint/observability/metrics.py" = ["ARG001", "ARG002"]
 # These two files exist to exercise Unicode normalisation, so they contain
 # NBSP, em space and fullwidth digits on purpose. RUF001 would flag exactly
 # the characters under test.
@@ -198,6 +209,12 @@ enable_error_code = ["redundant-expr", "truthy-bool", "ignore-without-code"]
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+# Optional dependencies the library's own dev environment does not install.
+# Imported only inside factories, and typed as Any at those boundaries.
+[[tool.mypy.overrides]]
+module = ["redis", "redis.*", "opentelemetry.exporter.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_typed = true

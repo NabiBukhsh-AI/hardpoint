@@ -156,5 +156,33 @@ carries a migration note here.
 - `FakeEmbeddingModel(lexical=True)` and `FakeLanguageModel(extractive=True)`,
   which make offline retrieval find the relevant passage and offline answers
   quote it.
+- Observability: the span taxonomy of ARCHITECTURE.md §21 with OpenTelemetry
+  GenAI attributes, emitted by the runtime's port wrappers (`hardpoint.llm`,
+  `hardpoint.embed`, `hardpoint.index.query`, `hardpoint.index.upsert`,
+  `hardpoint.rerank`, `hardpoint.guard`); `CollectingTracer`, `ConsoleTracer`
+  and `RedactingTracer`, which applies `observability.redact` paths to every
+  attribute and event; `InMemoryMetricSink` with Prometheus text output; the
+  metric vocabulary; debug mode (`observability.debug` or `HARDPOINT_DEBUG=1`)
+  attaching step inputs and outputs to spans.
+- `adapters.tracing.otel`: an OpenTelemetry tracer and metric sink behind the
+  `otel` extra, never touching global OTel state unless asked.
+- `observability.pricing`: a shipped `pricing.yaml`, overridable under
+  `pricing:` in configuration. An unknown model's cost is `None`, with one
+  warning per model, never zero.
+- Caching: `core.cache_keys` with the four key formats of ARCHITECTURE.md §22.2
+  verbatim; embedding and rerank caches in the port wrappers, the retrieval
+  cache in `VectorRetriever(epoch=...)`, and the generation cache in
+  `Generate(cache=True)`; `MemoryCache` and `FileCache` in the base install and
+  `RedisCache` behind the `redis` extra, all passing the new
+  `cache_backend_contract` kit.
+- Guards: `InputGuard`, `OutputGuard` and `GuardedGenerate` applying
+  allow/flag/redact/block/retry, and the schema, groundedness, injection
+  heuristic (flag by default) and input shape checks, configurable under
+  `guards.input` and `guards.output`.
+- Streaming through the pipeline: `Pipeline.run_detailed(on_delta=...)` and
+  `answer_query(on_delta=...)` stream the final step's text through the same
+  run, and `Generate.stream_events` is the single generation code path.
+- `BuiltinEntry.requires`, so a missing extra is reported from the registry
+  without importing or constructing anything.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

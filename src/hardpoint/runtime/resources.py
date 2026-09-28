@@ -37,7 +37,8 @@ from hardpoint.core.errors import ConfigError, ContractError
 from hardpoint.core.models import Answer
 from hardpoint.core.registry import ComponentRegistry, Kind
 from hardpoint.observability.metrics import NoOpMetricSink
-from hardpoint.observability.tracing import NoOpTracer
+from hardpoint.observability.pricing import PricingTable
+from hardpoint.observability.tracing import NoOpTracer, RedactingTracer
 from hardpoint.runtime.policies import PolicyChain
 from hardpoint.runtime.wrapped import (
     PolicyEmbeddingModel,
@@ -48,8 +49,9 @@ from hardpoint.runtime.wrapped import (
 
 if TYPE_CHECKING:
     from hardpoint.core.config.loader import ResolvedConfig
-    from hardpoint.core.config.schema import ComponentSpec, HardpointConfig
+    from hardpoint.core.config.schema import ComponentSpec, GuardSpec, HardpointConfig
     from hardpoint.core.ports import (
+        CacheBackend,
         EmbeddingModel,
         LanguageModel,
         MetricSink,
@@ -59,7 +61,11 @@ if TYPE_CHECKING:
         Tracer,
         VectorIndex,
     )
-    from hardpoint.runtime.pipeline import Pipeline
+    from hardpoint.generation.generate import Generate
+    from hardpoint.guards.base import GuardCheck
+    from hardpoint.retrieval.retrievers import Assembled, EpochReader
+    from hardpoint.runtime.pipeline import DeltaSink, Pipeline
+    from hardpoint.runtime.step import Step
 
 T = TypeVar("T")
 
@@ -101,9 +107,12 @@ class Resources:
         indexes: Named vector indexes, policy-wrapped.
         state: The ingestion manifest.
         prompts: The project's prompt store.
-        tracer: Where spans go.
+        tracer: Where spans go, already wrapped in the configured redaction.
         metrics: Where measurements go.
-        cache: Request-scoped and shared caches.
+        shared_cache: The backend behind ``cache.backend``, or ``None``.
+        pricing: Model prices, shipped and overridden.
+        input_checks: The checks configured under ``guards.input``.
+        output_checks: The checks configured under ``guards.output``.
     """
 
     config: HardpointConfig
@@ -117,7 +126,10 @@ class Resources:
     prompts: PromptStore
     tracer: Tracer = field(default_factory=NoOpTracer)
     metrics: MetricSink = field(default_factory=NoOpMetricSink)
-    cache: CacheHandle = field(default_factory=CacheHandle)
+    shared_cache: CacheBackend | None = None
+    pricing: PricingTable = field(default_factory=PricingTable)
+    input_checks: tuple[GuardCheck[str], ...] = ()
+    output_checks: tuple[GuardCheck[Answer], ...] = ()
 
     @property
     def llm(self) -> LanguageModel:
@@ -164,6 +176,25 @@ class Resources:
             )
         return found
 
+    def input_guards(self) -> list[Step[str, Any]]:
+        """The configured input guards as one step, or no step: ``[*res.input_guards(), ...]``."""
+        from hardpoint.guards.base import InputGuard  # noqa: PLC0415 - guards import runtime
+
+        return [InputGuard(self.input_checks)] if self.input_checks else []
+
+    def guarded(self, generate: Generate, *, refusal: str | None = None) -> Step[Assembled, Any]:
+        """Wrap generation in the configured output guards, when there are any.
+
+        With output guards the answer is checked before anyone sees it, so a
+        streamed request receives it whole: streaming text that a guard then
+        withdraws would show the user what the guard exists to withhold.
+        """
+        if not self.output_checks:
+            return generate
+        from hardpoint.guards.base import GuardedGenerate  # noqa: PLC0415 - guards import runtime
+
+        return GuardedGenerate(generate, self.output_checks, refusal=refusal, name=generate.name)
+
     def with_components(self, **changes: Any) -> Resources:
         """Return a copy with some components replaced.
 
@@ -174,7 +205,11 @@ class Resources:
         return replace(self, **changes)
 
     def run_context(self, *, run_id: str | None = None) -> RunContext:
-        """Build a ``RunContext`` with the configured budget and deadline."""
+        """Build a ``RunContext``: the configured budget and deadline, and caches.
+
+        Each run gets a fresh request-scoped cache and shares the configured
+        backend.
+        """
         budget_config = self.config.budgets.request
         return RunContext(
             run_id=run_id or new_run_id(),
@@ -182,11 +217,24 @@ class Resources:
             metrics=self.metrics,
             deadline=Deadline.in_seconds(budget_config.deadline_s),
             budget=Budget.from_config(budget_config),
-            cache=self.cache,
+            cache=CacheHandle(request=_RequestCache(), shared=self.shared_cache),
             config=self.snapshot,
             usage=UsageAccumulator(),
             extras={},
         )
+
+    def epoch_reader(self, name: str = "primary") -> EpochReader:
+        """Return a callable reading an index's current epoch from the manifest.
+
+        What ``VectorRetriever(epoch=...)`` takes to key its cache on the epoch,
+        so an ingestion run invalidates retrievals built on the old index.
+        """
+
+        async def read() -> int:
+            await self.state.initialise()
+            return await self.state.index_epoch(name)
+
+        return read
 
     async def epochs(self) -> dict[str, int]:
         """Return each configured index's epoch from the manifest.
@@ -198,9 +246,17 @@ class Resources:
         return {name: await self.state.index_epoch(name) for name in sorted(self.indexes)}
 
     async def aclose(self) -> None:
-        """Close every component that holds a connection or a file."""
+        """Close every component that holds a connection, a file or a buffer."""
         seen: set[int] = set()
-        for component in (self.llm_, self.embedder_, self.reranker_, *self.indexes.values()):
+        for component in (
+            self.llm_,
+            self.embedder_,
+            self.reranker_,
+            *self.indexes.values(),
+            self.shared_cache,
+            self.metrics,
+            getattr(self.tracer, "inner", self.tracer),
+        ):
             if component is None or id(component) in seen:
                 continue
             seen.add(id(component))
@@ -210,6 +266,25 @@ class Resources:
         close_state = getattr(self.state, "close", None)
         if close_state is not None:
             await close_state()
+
+
+class _RequestCache:
+    """The request-scoped cache: a dict that lives and dies with one run."""
+
+    def __init__(self) -> None:
+        self._values: dict[str, bytes] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        return self._values.get(key)
+
+    async def set(self, key: str, value: bytes, ttl_s: int | None) -> None:  # noqa: ARG002 - dies with the run
+        self._values[key] = value
+
+    async def delete_prefix(self, prefix: str) -> int:
+        doomed = [key for key in self._values if key.startswith(prefix)]
+        for key in doomed:
+            del self._values[key]
+        return len(doomed)
 
 
 def _require(component: T | None, path: str, what: str) -> T:
@@ -249,9 +324,15 @@ async def _create(
 
 
 async def _create_with_policies(
-    registry: ComponentRegistry, kind: Kind, spec: ComponentSpec, path: str
+    registry: ComponentRegistry,
+    kind: Kind,
+    spec: ComponentSpec,
+    path: str,
+    *,
+    config: HardpointConfig,
+    pricing: PricingTable,
 ) -> Any:
-    """Construct a component and its fallback, and wrap both in the policy chain."""
+    """Construct a component and its fallback, wrapped in policies, tracing and cost."""
     inner = await _create(registry, kind, spec, path)
     chain = PolicyChain.from_config(spec.policies)
     fallback_spec = spec.policies.fallback
@@ -262,12 +343,12 @@ async def _create_with_policies(
     )
 
     if kind is Kind.LLM:
-        return PolicyLanguageModel(inner, chain, fallback)
+        return PolicyLanguageModel(inner, chain, fallback, pricing=pricing)
     if kind is Kind.EMBEDDINGS:
-        return PolicyEmbeddingModel(inner, chain, fallback)
-    if kind is Kind.RERANKER:
-        return PolicyReranker(inner, chain, fallback)
-    return PolicyVectorIndex(inner, chain)
+        return PolicyEmbeddingModel(
+            inner, chain, fallback, pricing=pricing, cache=config.cache.embeddings
+        )
+    return PolicyReranker(inner, chain, fallback, pricing=pricing, cache=config.cache.rerank)
 
 
 async def build_resources(
@@ -304,26 +385,19 @@ async def build_resources(
 
         registry.discover(entry_points(group=ENTRY_POINT_GROUP))
 
+    pricing = PricingTable(config.pricing)
     providers = config.providers
-    llm = (
-        await _create_with_policies(registry, Kind.LLM, providers.llm, "providers.llm")
-        if providers.llm
-        else None
-    )
-    embedder = (
-        await _create_with_policies(
-            registry, Kind.EMBEDDINGS, providers.embeddings, "providers.embeddings"
+    wrapped: dict[str, Any] = {}
+    for kind, path, spec in (
+        (Kind.LLM, "providers.llm", providers.llm),
+        (Kind.EMBEDDINGS, "providers.embeddings", providers.embeddings),
+        (Kind.RERANKER, "providers.reranker", providers.reranker),
+    ):
+        wrapped[path] = (
+            await _create_with_policies(registry, kind, spec, path, config=config, pricing=pricing)
+            if spec is not None
+            else None
         )
-        if providers.embeddings
-        else None
-    )
-    reranker = (
-        await _create_with_policies(
-            registry, Kind.RERANKER, providers.reranker, "providers.reranker"
-        )
-        if providers.reranker
-        else None
-    )
 
     indexes: dict[str, VectorIndex] = {}
     for name, spec in sorted(config.indexes.items()):
@@ -339,17 +413,57 @@ async def build_resources(
         else await registry.create(Kind.STATE, "sqlite", {}, config_path="ingestion.state")
     )
 
+    observability = config.observability
+    tracer: Tracer = (
+        await _create(registry, Kind.TRACER, observability.tracer, "observability.tracer")
+        if observability.tracer is not None
+        else NoOpTracer()
+    )
+    if observability.redact:
+        tracer = RedactingTracer(tracer, observability.redact)
+    metrics: MetricSink = (
+        await _create(registry, Kind.METRICS, observability.metrics, "observability.metrics")
+        if observability.metrics is not None
+        else NoOpMetricSink()
+    )
+    shared_cache = (
+        await _create(registry, Kind.CACHE, config.cache.backend, "cache.backend")
+        if config.cache.backend is not None
+        else None
+    )
+    input_checks = [
+        await _create_guard(registry, spec, f"guards.input.{position}")
+        for position, spec in enumerate(config.guards.input)
+    ]
+    output_checks = [
+        await _create_guard(registry, spec, f"guards.output.{position}")
+        for position, spec in enumerate(config.guards.output)
+    ]
+
     return Resources(
         config=config,
         snapshot=resolved.snapshot,
         registry=registry,
-        llm_=llm,
-        embedder_=embedder,
-        reranker_=reranker,
+        llm_=wrapped["providers.llm"],
+        embedder_=wrapped["providers.embeddings"],
+        reranker_=wrapped["providers.reranker"],
         indexes=indexes,
         state=state,
         prompts=prompts or _prompt_store(config.project.prompts_dir),
+        tracer=tracer,
+        metrics=metrics,
+        shared_cache=shared_cache,
+        pricing=pricing,
+        input_checks=tuple(input_checks),
+        output_checks=tuple(output_checks),
     )
+
+
+async def _create_guard(registry: ComponentRegistry, spec: GuardSpec, path: str) -> Any:
+    """Construct one guard: its own options plus the ``action`` every guard takes."""
+    options = {**spec.options(), "action": spec.action}
+    registry.resolve(Kind.GUARD, spec.type, config_path=f"{path}.type")
+    return await registry.create(Kind.GUARD, spec.type, options, config_path=path)
 
 
 def _prompt_store(directory: str) -> PromptStore:
@@ -439,7 +553,12 @@ def load_pipeline(res: Resources) -> Pipeline[Any, Any]:
 
 
 async def answer_query(
-    pipeline: Pipeline[Any, Any], query: Any, res: Resources, *, run_id: str | None = None
+    pipeline: Pipeline[Any, Any],
+    query: Any,
+    res: Resources,
+    *,
+    run_id: str | None = None,
+    on_delta: DeltaSink | None = None,
 ) -> Answer:
     """Run a pipeline and complete its ``Answer`` with what only the run knows.
 
@@ -448,11 +567,18 @@ async def answer_query(
     manifest facts -- config hash, index epochs, model ids -- that make the
     answer reproducible (ARCHITECTURE.md §10).
 
+    ``on_delta`` streams the final step's text as it is produced, through the
+    same pipeline run: what the service's SSE endpoint uses.
+
     Raises:
         ContractError: If the pipeline's last step did not return an ``Answer``.
     """
     ctx = res.run_context(run_id=run_id)
-    run = await pipeline.run_detailed(query, ctx)
+    try:
+        run = await pipeline.run_detailed(query, ctx, on_delta=on_delta)
+    except Exception:
+        ctx.metrics.increment("hardpoint.requests", pipeline=pipeline.name, outcome="error")
+        raise
     answer = run.value
     if not isinstance(answer, Answer):
         raise ContractError(
@@ -460,6 +586,9 @@ async def answer_query(
             component=pipeline.name,
             remedy="End the pipeline with a step that returns an Answer, such as Generate.",
         )
+
+    outcome = "blocked" if answer.blocked else "abstained" if answer.abstained else "ok"
+    ctx.metrics.increment("hardpoint.requests", pipeline=pipeline.name, outcome=outcome)
 
     model_ids = dict(answer.manifest.model_ids)
     if res.embedder_ is not None:

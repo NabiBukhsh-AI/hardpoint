@@ -30,7 +30,7 @@ language would have no debugger (ADR-005).
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import anyio
@@ -53,10 +53,39 @@ from hardpoint.runtime.step import (
 if TYPE_CHECKING:
     from hardpoint.core.ports import MetricSink, Tracer
 
-__all__ = ["Pipeline", "PipelineRun"]
+__all__ = ["DeltaSink", "Pipeline", "PipelineRun"]
 
 TIn = TypeVar("TIn")
 TOut = TypeVar("TOut")
+
+DeltaSink = Callable[[str], Awaitable[None]]
+"""Receives streamed text, in order, as the final step produces it."""
+
+_PREVIEW_CHARS = 2000
+
+
+def _preview(value: object) -> str:
+    """A bounded rendering of a step's input or output, for debug-mode spans."""
+    text = repr(value)
+    return (
+        text if len(text) <= _PREVIEW_CHARS else f"{text[:_PREVIEW_CHARS]}... ({len(text)} chars)"
+    )
+
+
+async def _consume(step: object, data: object, ctx: RunContext, on_delta: DeltaSink) -> object:
+    """Drive a streaming step: pass text on as it arrives, return its final value.
+
+    A streaming step's ``stream_events`` yields text deltas and then, last, the
+    value the step would have returned.
+    """
+    final: object = None
+    events: AsyncIterator[object] = step.stream_events(data, ctx)  # type: ignore[attr-defined]  # checked by the caller
+    async for event in events:
+        if isinstance(event, str):
+            await on_delta(event)
+        else:
+            final = event
+    return final
 
 
 class PipelineRun:
@@ -158,12 +187,19 @@ class Pipeline(Generic[TIn, TOut]):
         result: TOut = run.value
         return result
 
-    async def run_detailed(self, data: TIn, ctx: RunContext) -> PipelineRun:
+    async def run_detailed(
+        self, data: TIn, ctx: RunContext, *, on_delta: DeltaSink | None = None
+    ) -> PipelineRun:
         """Run every step and return the output together with what happened.
 
         Args:
             data: The first step's input.
             ctx: The run context. Its usage accumulator is written to.
+            on_delta: Receives text as the final step produces it, when that
+                step can stream (it has a ``stream_events`` method, as
+                ``Generate`` does). The same steps run either way, with the same
+                spans, limits and policies: streaming changes when text reaches
+                the caller, not what runs.
 
         Returns:
             The final value, the collected degradations, the usage and the
@@ -172,6 +208,7 @@ class Pipeline(Generic[TIn, TOut]):
         degradations: list[Degradation] = []
         current: Any = data
         trace_id: str | None = None
+        debug = bool(ctx.config.get("observability.debug"))
 
         pipeline_attrs: dict[str, JsonValue] = {
             "pipeline.name": self.name,
@@ -179,8 +216,9 @@ class Pipeline(Generic[TIn, TOut]):
         }
         async with ctx.tracer.span("hardpoint.pipeline", **pipeline_attrs) as pipeline_span:
             trace_id = pipeline_span.trace_id
+            last = len(self._steps) - 1
 
-            for step in self._steps:
+            for position, step in enumerate(self._steps):
                 # 1 and 2: deadline first, then budget. A run that is out of time
                 # should say so, rather than reporting whichever budget it
                 # happened to exhaust while running late.
@@ -194,10 +232,19 @@ class Pipeline(Generic[TIn, TOut]):
                     "step.type": step_type_name(step),
                 }
                 async with ctx.tracer.span("hardpoint.step", **step_attrs) as span:
+                    if debug:
+                        span.set_attribute("step.input", _preview(current))
                     started = time.perf_counter()
                     try:
-                        # 4: invoke.
-                        returned = await step(current, ctx)
+                        # 4: invoke -- streaming the final step when asked to.
+                        if (
+                            on_delta is not None
+                            and position == last
+                            and hasattr(step, "stream_events")
+                        ):
+                            returned = await _consume(step, current, ctx, on_delta)
+                        else:
+                            returned = await step(current, ctx)
                     except Exception as exc:
                         # 5: latency is recorded even for a failed step, because
                         # "which step was slow before it fell over" is the first
@@ -205,6 +252,9 @@ class Pipeline(Generic[TIn, TOut]):
                         self._record_latency(ctx, step.name, started)
                         span.record_exception(exc)
                         span.set_status("error", type(exc).__name__)
+                        ctx.metrics.increment(
+                            "hardpoint.errors", component=step.name, error=type(exc).__name__
+                        )
 
                         # 6: apply the failure policy.
                         if self._policy_for(step.name) is FailurePolicy.FAIL:
@@ -219,6 +269,9 @@ class Pipeline(Generic[TIn, TOut]):
                                 ),
                             )
                         )
+                        ctx.metrics.increment(
+                            "hardpoint.degradations", step=step.name, reason="step_skipped"
+                        )
                         continue
 
                     self._record_latency(ctx, step.name, started)
@@ -229,6 +282,12 @@ class Pipeline(Generic[TIn, TOut]):
                     degradations.extend(reported)
                     if reported:
                         span.set_attribute("step.degradations", len(reported))
+                    for degradation in reported:
+                        ctx.metrics.increment(
+                            "hardpoint.degradations", step=step.name, reason=degradation.reason
+                        )
+                    if debug:
+                        span.set_attribute("step.output", _preview(current))
 
             pipeline_span.set_attribute("pipeline.degradations", len(degradations))
 
@@ -325,13 +384,15 @@ class Pipeline(Generic[TIn, TOut]):
 
     @staticmethod
     def _record_latency(ctx: RunContext, step_name: str, started: float) -> None:
-        """Attribute wall time to a step.
+        """Attribute wall time to a step, in the usage record and as a metric.
 
         Latency is the pipeline's to record, because only it knows when the step
         began. Tokens and cost are the step's, because only it knows what it
         called.
         """
-        ctx.usage.record(step_name, latency_ms=(time.perf_counter() - started) * 1000.0)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        ctx.usage.record(step_name, latency_ms=elapsed_ms)
+        ctx.metrics.observe("hardpoint.step.latency_ms", elapsed_ms, step=step_name)
 
     def __repr__(self) -> str:
         """Render the name and the step names, in order."""

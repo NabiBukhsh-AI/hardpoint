@@ -123,7 +123,18 @@ def test_builtin_table_is_internally_consistent() -> None:
 
 @pytest.mark.parametrize("entry", BUILTIN_COMPONENTS, ids=lambda e: f"{e.kind.value}:{e.key}")
 def test_every_builtin_resolves(entry: BuiltinEntry) -> None:
-    """A row naming a module or attribute that does not exist fails here, not for a user."""
+    """A row naming a module or attribute that does not exist fails here, not for a user.
+
+    A row whose extra is not installed must instead name the install command.
+    """
+    import importlib.util
+
+    if any(importlib.util.find_spec(name) is None for name in entry.requires):
+        with pytest.raises(MissingDependencyError) as exc_info:
+            ComponentRegistry().resolve(entry.kind, entry.key)
+        assert exc_info.value.remedy == f"pip install 'hardpoint[{entry.extra}]'"
+        return
+
     registration = ComponentRegistry().resolve(entry.kind, entry.key)
     assert callable(registration.factory)
     assert issubclass(registration.config_model, BaseModel)

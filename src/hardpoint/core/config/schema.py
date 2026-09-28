@@ -31,6 +31,8 @@ from hardpoint.core.types import JsonValue
 __all__ = [
     "CONFIG_VERSION",
     "BudgetsConfig",
+    "CacheConfig",
+    "CacheLayerConfig",
     "ChunkingConfig",
     "CircuitBreakerPolicyConfig",
     "ComponentSpec",
@@ -40,6 +42,7 @@ __all__ = [
     "GuardsConfig",
     "HardpointConfig",
     "IngestionConfig",
+    "ModelPriceConfig",
     "ObservabilityConfig",
     "PluginsConfig",
     "PolicyConfig",
@@ -294,6 +297,9 @@ class ObservabilityConfig(BaseModel):
     Traces may contain sensitive content, so the generated project's production
     overlay turns this on for message content and chunk text. Recording
     everything by default would be a compliance trap (ARCHITECTURE.md §19).
+
+    ``debug`` (or ``HARDPOINT_DEBUG=1``) attaches each step's input and output
+    to its span, subject to the same redaction (ARCHITECTURE.md §21).
     """
 
     model_config = _STRICT
@@ -301,6 +307,7 @@ class ObservabilityConfig(BaseModel):
     tracer: ComponentSpec | None = None
     metrics: ComponentSpec | None = None
     redact: tuple[str, ...] = ()
+    debug: bool = False
 
 
 class RequestBudgetConfig(BaseModel):
@@ -411,6 +418,67 @@ class EvalConfig(BaseModel):
     max_cost_usd: float | None = Field(default=None, gt=0)
 
 
+class CacheLayerConfig(BaseModel):
+    """One cache layer: on or off, and for how long.
+
+    Args:
+        enabled: Whether this layer caches.
+        ttl_s: Time to live. ``None`` never expires, which is right only for
+            content-addressed layers such as embeddings.
+    """
+
+    model_config = _STRICT
+
+    enabled: bool = True
+    ttl_s: int | None = Field(default=None, gt=0)
+
+
+class CacheConfig(BaseModel):
+    """The shared cache backend and the four layers of ARCHITECTURE.md §22.2.
+
+    Every key includes what makes caching *safe*: the embedding model, the index
+    epoch, the prompt version. Generation caching is off by default, because
+    serving a cached answer is a product decision, not a performance one.
+
+    Args:
+        backend: ``memory``, ``file`` or ``redis``. ``None`` disables the shared
+            cache entirely; the request-scoped cache always exists.
+        embeddings: Content-addressed; never expires by default.
+        retrieval: Keyed on the index epoch, so an ingestion run invalidates it.
+        generation: Keyed on the prompt version and model. Off by default.
+        rerank: Keyed on the query and the candidate ids.
+    """
+
+    model_config = _STRICT
+
+    backend: ComponentSpec | None = None
+    embeddings: CacheLayerConfig = Field(default_factory=CacheLayerConfig)
+    retrieval: CacheLayerConfig = Field(default_factory=lambda: CacheLayerConfig(ttl_s=300))
+    generation: CacheLayerConfig = Field(
+        default_factory=lambda: CacheLayerConfig(enabled=False, ttl_s=3600)
+    )
+    rerank: CacheLayerConfig = Field(default_factory=lambda: CacheLayerConfig(ttl_s=300))
+
+
+class ModelPriceConfig(BaseModel):
+    """One model's price, in US dollars per million tokens.
+
+    Args:
+        input: Prompt tokens.
+        output: Completion tokens.
+        embed: Embedded tokens.
+        per_call: A flat price per call, for providers that bill by request
+            (rerankers). Dollars, not per million.
+    """
+
+    model_config = _STRICT
+
+    input: float | None = Field(default=None, ge=0)
+    output: float | None = Field(default=None, ge=0)
+    embed: float | None = Field(default=None, ge=0)
+    per_call: float | None = Field(default=None, ge=0)
+
+
 class PluginsConfig(BaseModel):
     """Third-party component discovery.
 
@@ -441,6 +509,8 @@ class HardpointConfig(BaseModel):
         ingestion: Ingestion throughput and failure handling.
         eval: Quality gates.
         plugins: Third-party component discovery.
+        pricing: Per-model prices overriding the shipped table.
+        cache: Cache backend and per-layer settings.
     """
 
     model_config = _STRICT
@@ -457,6 +527,8 @@ class HardpointConfig(BaseModel):
     ingestion: IngestionConfig = Field(default_factory=IngestionConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)
     plugins: PluginsConfig = Field(default_factory=PluginsConfig)
+    pricing: dict[str, ModelPriceConfig] = Field(default_factory=dict)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
 
 
 ComponentSpec.model_rebuild()

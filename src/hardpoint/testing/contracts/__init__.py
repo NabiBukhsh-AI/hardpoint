@@ -16,11 +16,13 @@ the five base dependencies installed still works (INSTRUCTIONS.md §3
 
 from __future__ import annotations
 
+from hardpoint.testing.contracts.cache_backend import cache_backend_contract
 from hardpoint.testing.contracts.embedding_model import embedding_model_contract
 from hardpoint.testing.contracts.language_model import language_model_contract
 from hardpoint.testing.contracts.vector_index import vector_index_contract
 
 __all__ = [
+    "cache_backend_contract",
     "embedding_model_contract",
     "language_model_contract",
     "vector_index_contract",

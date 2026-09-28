@@ -23,18 +23,24 @@ typed end to end.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from hardpoint.core.cache_keys import retrieval_key
 from hardpoint.core.models import CharSpan, Chunk, ContextBundle, RetrievedChunk, TrustLevel
-from hardpoint.core.ports import MetadataFilter, VectorQuery
+from hardpoint.core.ports import MetadataFilter, ScoredRecord, VectorQuery
+from hardpoint.core.types import JsonValue
 
 if TYPE_CHECKING:
     from hardpoint.core.context import RunContext
     from hardpoint.core.ports import EmbeddingModel, VectorIndex
 
-__all__ = ["Assembled", "FilterFactory", "Retrieved", "VectorRetriever"]
+__all__ = ["Assembled", "EpochReader", "FilterFactory", "Retrieved", "VectorRetriever"]
+
+EpochReader = Callable[[], Awaitable[int]]
+"""Returns an index's current epoch, which every retrieval cache key includes."""
 
 FilterFactory = Callable[[str, "RunContext"], "MetadataFilter | None"]
 """Builds a metadata filter from the query and the run context.
@@ -98,6 +104,13 @@ class VectorRetriever:
             ``filter`` when both are given.
         namespace: Index namespace to search.
         min_score: Backend-side score floor.
+        epoch: Reads the index's current epoch. When given, and the run has a
+            shared cache, results are cached under
+            ``retr:{index}:{epoch}:{model_id}:{sha256(query + filter + params)}``
+            (ARCHITECTURE.md §22.2) -- so an ingestion run, which bumps the
+            epoch, invalidates every cached retrieval built on the old index.
+            ``Resources.epoch_reader`` supplies one.
+        cache_ttl_s: How long a cached retrieval lives.
         name: The step's name, used for usage attribution and span labelling.
     """
 
@@ -111,6 +124,8 @@ class VectorRetriever:
         filter_from: FilterFactory | None = None,
         namespace: str | None = None,
         min_score: float | None = None,
+        epoch: EpochReader | None = None,
+        cache_ttl_s: int | None = 300,
         name: str = "retrieve",
     ) -> None:
         self.name = name
@@ -121,6 +136,8 @@ class VectorRetriever:
         self.filter_from = filter_from
         self.namespace = namespace
         self.min_score = min_score
+        self.epoch = epoch
+        self.cache_ttl_s = cache_ttl_s
 
     async def __call__(self, data: str | Retrieved, ctx: RunContext) -> Retrieved:
         """Retrieve chunks for a query.
@@ -142,29 +159,15 @@ class VectorRetriever:
                 an empty result set.
         """
         query = data if isinstance(data, str) else data.query
-
-        embedded = await self.embedder.embed([query], "query", ctx)
-        ctx.usage.record(
-            self.name,
-            calls=embedded.usage.calls,
-            embed_tokens=embedded.usage.embed_tokens,
-            cost_usd=embedded.usage.cost_usd,
-            estimated=embedded.usage.estimated,
-        )
-
         active_filter = self.filter_from(query, ctx) if self.filter_from else self.filter
 
-        scored = await self.index.query(
-            VectorQuery(
-                vector=embedded.vectors[0],
-                top_k=self.top_k,
-                filter=active_filter,
-                namespace=self.namespace,
-                min_score=self.min_score,
-                include_text=True,
-            ),
-            ctx,
-        )
+        key = await self._cache_key(query, active_filter, ctx)
+        scored = await self._cached(key, ctx) if key is not None else None
+        if scored is None:
+            scored = await self._search(query, active_filter, ctx)
+            if key is not None:
+                payload = json.dumps([record.model_dump(mode="json") for record in scored])
+                await ctx.cache.set(key, payload.encode("utf-8"), ttl_s=self.cache_ttl_s)
 
         return Retrieved(
             query=query,
@@ -179,6 +182,57 @@ class VectorRetriever:
                 for rank, record in enumerate(scored)
             ),
         )
+
+    async def _search(
+        self, query: str, active_filter: MetadataFilter | None, ctx: RunContext
+    ) -> list[ScoredRecord]:
+        embedded = await self.embedder.embed([query], "query", ctx)
+        ctx.usage.record(
+            self.name,
+            calls=embedded.usage.calls,
+            embed_tokens=embedded.usage.embed_tokens,
+            cost_usd=embedded.usage.cost_usd,
+            estimated=embedded.usage.estimated,
+        )
+        return await self.index.query(
+            VectorQuery(
+                vector=embedded.vectors[0],
+                top_k=self.top_k,
+                filter=active_filter,
+                namespace=self.namespace,
+                min_score=self.min_score,
+                include_text=True,
+            ),
+            ctx,
+        )
+
+    async def _cache_key(
+        self, query: str, active_filter: MetadataFilter | None, ctx: RunContext
+    ) -> str | None:
+        if self.epoch is None or not ctx.cache.enabled("shared"):
+            return None
+        params: dict[str, JsonValue] = {
+            "top_k": self.top_k,
+            "namespace": self.namespace,
+            "min_score": self.min_score,
+        }
+        return retrieval_key(
+            self.index.name,
+            await self.epoch(),
+            self.embedder.id,
+            query=query,
+            filter=active_filter,
+            params=params,
+        )
+
+    @staticmethod
+    async def _cached(key: str, ctx: RunContext) -> list[ScoredRecord] | None:
+        cached = await ctx.cache.get(key)
+        outcome = "hit" if cached is not None else "miss"
+        ctx.metrics.increment("hardpoint.cache.lookups", layer="retrieval", result=outcome)
+        if cached is None:
+            return None
+        return [ScoredRecord.model_validate(item) for item in json.loads(cached)]
 
     def __repr__(self) -> str:
         """Render the index and top_k."""
