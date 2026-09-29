@@ -31,6 +31,23 @@ deterministic local fakes (see `config/offline.yaml`). Nothing leaves the machin
 Re-running `hardpoint ingest run` over an unchanged corpus embeds nothing, and
 editing one paragraph re-embeds only the chunks it touched.
 
+## Evaluate it
+
+```bash
+hardpoint eval run --suite smoke                    # gate against evals/baselines/smoke.json
+hardpoint eval run --suite smoke --max-cost 0.50    # refuses to start above the estimate
+hardpoint eval run --suite smoke --cassettes record # record provider calls once...
+hardpoint eval run --suite smoke --cassettes replay # ...then replay with zero calls in CI
+hardpoint eval run --suite smoke --update-baseline  # accept the current run as the baseline
+```
+
+`evals/smoke.jsonl` holds one case per line. The committed baseline was recorded
+with the offline fakes; once you switch to real models, run once with
+`--update-baseline` and commit the result. A pull request that makes retrieval
+worse fails the gate with a table of the questions that regressed. Judge metrics
+(faithfulness, answer relevance) use `prompts/judge_*.md` and are enabled with
+`eval.judge.enabled: true`.
+
 ## Test it
 
 ```bash

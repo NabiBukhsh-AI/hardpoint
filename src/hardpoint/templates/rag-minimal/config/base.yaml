@@ -47,3 +47,11 @@ retrieval:
 
 budgets:
   request: {max_llm_calls: 4, deadline_s: 60}
+
+# The quality gate: `hardpoint eval run --suite smoke`. Thresholds are floors
+# (latency, cost and error rates are ceilings); the committed baseline in
+# evals/baselines/ is what a pull request may not regress below.
+eval:
+  k: 5
+  thresholds: {hit_rate_at_5: 0.8, error_rate: 0.0}
+  tolerance: 0.02

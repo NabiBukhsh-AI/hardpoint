@@ -1,0 +1,103 @@
+{
+  "cases": {
+    "audit-retention": {
+      "context_precision": 0.125,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0,
+      "precision_at_5": 0.2,
+      "recall_at_5": 1.0
+    },
+    "default-limits": {
+      "context_precision": 0.25,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0,
+      "precision_at_5": 0.4,
+      "recall_at_5": 1.0
+    },
+    "failed-payment": {
+      "context_precision": 0.25,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0,
+      "precision_at_5": 0.4,
+      "recall_at_5": 1.0
+    },
+    "invoice-timing": {
+      "context_precision": 0.375,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0,
+      "precision_at_5": 0.6,
+      "recall_at_5": 1.0
+    },
+    "key-limit": {
+      "context_precision": 0.625,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 0.8687949224876582,
+      "precision_at_5": 0.8,
+      "recall_at_5": 1.0
+    },
+    "rate-limited": {
+      "context_precision": 0.5,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 0.8048099750039491,
+      "precision_at_5": 0.6,
+      "recall_at_5": 1.0
+    },
+    "refunds": {
+      "context_precision": 0.375,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 0.8529278650606567,
+      "precision_at_5": 0.6,
+      "recall_at_5": 1.0
+    },
+    "revoked-key": {
+      "context_precision": 0.625,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 0.8687949224876582,
+      "precision_at_5": 0.8,
+      "recall_at_5": 1.0
+    },
+    "rotate-key": {
+      "context_precision": 0.625,
+      "hit_rate_at_5": 1.0,
+      "mrr": 1.0,
+      "ndcg_at_5": 1.0,
+      "precision_at_5": 1.0,
+      "recall_at_5": 1.0
+    },
+    "workspace-deletion": {
+      "context_precision": 0.125,
+      "hit_rate_at_5": 1.0,
+      "mrr": 0.5,
+      "ndcg_at_5": 0.6309297535714575,
+      "precision_at_5": 0.2,
+      "recall_at_5": 1.0
+    }
+  },
+  "hardpoint_version": "0.0.0",
+  "judge": null,
+  "k": 5,
+  "metrics": {
+    "abstention_rate": 0.0,
+    "context_precision": 0.3875,
+    "degradation_rate": 0.0,
+    "error_rate": 0.0,
+    "hit_rate_at_5": 1.0,
+    "mean_cost_usd": 0.0,
+    "mrr": 0.95,
+    "ndcg_at_5": 0.9026257438611379,
+    "p50_latency_ms": 38.387749998946674,
+    "p95_latency_ms": 55.02975500858156,
+    "precision_at_5": 0.5599999999999999,
+    "recall_at_5": 1.0,
+    "total_cost_usd": 0.0
+  },
+  "suite": "smoke"
+}

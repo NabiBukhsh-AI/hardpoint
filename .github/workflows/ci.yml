@@ -122,6 +122,7 @@ jobs:
             (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline doctor)
             (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline ingest run)
             (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline ask "How do I rotate an API key?")
+            (cd "smoke-$template" && ../.venv-smoke/bin/hardpoint --env offline eval run --suite smoke)
             (cd "smoke-$template" && ../.venv-smoke/bin/python -m pytest -q)
             echo "::endgroup::"
           done

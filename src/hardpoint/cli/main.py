@@ -28,6 +28,7 @@ from hardpoint.cli.commands.doctor import (
     render_checks,
     run_doctor,
 )
+from hardpoint.cli.commands.evaluate import run_suite
 from hardpoint.cli.commands.ingest import ingest as run_ingest
 from hardpoint.cli.commands.ingest import ingest_status
 from hardpoint.cli.commands.init import TEMPLATES, diff_project, write_project
@@ -53,9 +54,11 @@ app = typer.Typer(
 config_app = typer.Typer(help="Inspect and validate configuration.", no_args_is_help=True)
 components_app = typer.Typer(help="Inspect registered components.", no_args_is_help=True)
 ingest_app = typer.Typer(help="Sync sources into the index.", no_args_is_help=True)
+eval_app = typer.Typer(help="Run evaluation suites and quality gates.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(components_app, name="components")
 app.add_typer(ingest_app, name="ingest")
+app.add_typer(eval_app, name="eval")
 
 
 # --------------------------------------------------------------------------- #
@@ -337,6 +340,57 @@ def ask_command(
     if explain:
         typer.echo("")
         typer.echo(render_explain(answer, captured, redact_content=redact))
+
+
+# --------------------------------------------------------------------------- #
+# eval                                                                        #
+# --------------------------------------------------------------------------- #
+
+
+@eval_app.command("run")
+def eval_run(  # noqa: PLR0917 - one parameter per command-line option
+    ctx: typer.Context,
+    suite: Annotated[
+        str, typer.Option("--suite", help="Dataset: <datasets_dir>/<suite>.jsonl.")
+    ] = "smoke",
+    tag: Annotated[
+        list[str] | None, typer.Option("--tag", help="Only cases with this tag.")
+    ] = None,
+    max_cost: Annotated[
+        float | None, typer.Option("--max-cost", help="Refuse to start above this estimate (USD).")
+    ] = None,
+    cassettes: Annotated[
+        str, typer.Option("--cassettes", help="off, record, or replay (zero provider calls).")
+    ] = "off",
+    update_baseline: Annotated[
+        bool, typer.Option("--update-baseline", help="Write this run as the committed baseline.")
+    ] = False,
+    output: Annotated[Path, typer.Option("--output", help="Where reports are written.")] = Path(
+        "artefacts/eval"
+    ),
+) -> None:
+    """Run an eval suite through the project's pipeline and gate it."""
+    if cassettes not in ("off", "record", "replay"):
+        typer.echo("error: --cassettes must be off, record or replay", err=True)
+        raise typer.Exit(2)
+    state = _state(ctx)
+    report, markdown = _run(
+        lambda: _with_resources(
+            state,
+            lambda res: run_suite(
+                res,
+                suite,
+                tags=tuple(tag or ()),
+                max_cost=max_cost,
+                cassettes=cassettes,  # type: ignore[arg-type]  # validated above
+                update_baseline=update_baseline,
+                output=output,
+            ),
+        )
+    )
+    typer.echo(markdown)
+    if report.gate is not None and not report.gate.passed:
+        raise typer.Exit(1)
 
 
 # --------------------------------------------------------------------------- #

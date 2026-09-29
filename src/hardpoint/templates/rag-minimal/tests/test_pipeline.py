@@ -56,3 +56,8 @@ def test_the_explain_report_shows_what_happened(project: Path) -> None:
 
 def test_doctor_passes(project: Path) -> None:
     assert "0 failed" in hardpoint("doctor")
+
+
+def test_the_quality_gate_passes_against_the_committed_baseline(project: Path) -> None:
+    hardpoint("ingest", "run")
+    assert "PASSED" in hardpoint("eval", "run", "--suite", "smoke")

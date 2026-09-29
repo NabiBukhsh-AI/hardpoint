@@ -241,6 +241,7 @@ class DropRecord(BaseModel):
     reason: Literal["token_budget", "duplicate", "below_threshold", "filtered", "compressed_out"]
     detail: str | None = None
     score: float | None = None
+    document_id: str | None = None
 
 
 class ContextBundle(BaseModel):

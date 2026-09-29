@@ -63,6 +63,13 @@ def test_claims_ignore_fragments() -> None:
     ]
 
 
+def test_a_citation_after_the_full_stop_belongs_to_that_sentence() -> None:
+    """``"... thirty days. [1]"`` is how most models place citations."""
+    supported, unsupported = grounding(answer("Refunds are available within thirty days. [1]"))
+    assert supported == ["Refunds are available within thirty days. [1]"]
+    assert not unsupported
+
+
 def test_a_cited_supported_claim_is_grounded() -> None:
     supported, unsupported = grounding(answer("Refunds are available within thirty days [1]."))
     assert supported

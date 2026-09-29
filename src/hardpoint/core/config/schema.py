@@ -42,6 +42,7 @@ __all__ = [
     "GuardsConfig",
     "HardpointConfig",
     "IngestionConfig",
+    "JudgeConfig",
     "ModelPriceConfig",
     "ObservabilityConfig",
     "PluginsConfig",
@@ -406,19 +407,59 @@ class ProjectConfig(BaseModel):
     service: str = "service.app:create_app"
 
 
+class JudgeConfig(BaseModel):
+    """LLM-judged metrics: faithfulness and answer relevance.
+
+    Every judged score records the judge's model id, prompt version and
+    temperature, because a judge change makes scores incomparable
+    (ARCHITECTURE.md §20.2).
+
+    Args:
+        enabled: Whether to run the judge metrics.
+        llm: The judge model. Defaults to the pipeline's own ``providers.llm``;
+            a different, stronger model is better practice.
+        temperature: Sampling temperature for judging. Zero, for repeatability.
+        faithfulness_prompt: The project prompt that asks for a faithfulness
+            score. Prompts are project assets; the library ships none.
+        relevance_prompt: The project prompt that asks for a relevance score.
+    """
+
+    model_config = _STRICT
+
+    enabled: bool = False
+    llm: ComponentSpec | None = None
+    temperature: float = Field(default=0.0, ge=0)
+    faithfulness_prompt: str = "judge_faithfulness"
+    relevance_prompt: str = "judge_relevance"
+
+
 class EvalConfig(BaseModel):
     """Quality gates.
 
     Args:
-        thresholds: Metric name to minimum acceptable value. A breach fails CI
-            with a per-case regression table.
+        thresholds: Metric name to its bound. Most are minimums; latency,
+            cost and the error, abstention and degradation rates are maximums.
+            A breach fails the gate.
+        tolerance: How far an aggregate metric may regress from the committed
+            baseline before the gate fails. Absolute, in the metric's units.
         max_cost_usd: Refuse to start a suite whose estimated cost exceeds this.
+        k: The cut-off for the ``@k`` retrieval metrics.
+        datasets_dir: Where ``<suite>.jsonl`` datasets live.
+        baselines_dir: Where ``<suite>.json`` baselines are committed.
+        concurrency: Cases run at once.
+        judge: LLM-judged metrics, off by default.
     """
 
     model_config = _STRICT
 
     thresholds: dict[str, float] = Field(default_factory=dict)
+    tolerance: float = Field(default=0.02, ge=0)
     max_cost_usd: float | None = Field(default=None, gt=0)
+    k: int = Field(default=5, ge=1)
+    datasets_dir: str = "evals"
+    baselines_dir: str = "evals/baselines"
+    concurrency: int = Field(default=4, ge=1)
+    judge: JudgeConfig = Field(default_factory=JudgeConfig)
 
 
 class CacheLayerConfig(BaseModel):

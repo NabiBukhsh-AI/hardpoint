@@ -1,4 +1,21 @@
-"""Deterministic retrieval metrics and optional judge metrics.
+"""Deterministic retrieval metrics and the optional LLM-judged metrics."""
 
-Populated in milestone M3.
-"""
+from __future__ import annotations
+
+from hardpoint.eval.metrics.retrieval import (
+    context_precision,
+    hit_rate_at_k,
+    mrr,
+    ndcg_at_k,
+    precision_at_k,
+    recall_at_k,
+)
+
+__all__ = [
+    "context_precision",
+    "hit_rate_at_k",
+    "mrr",
+    "ndcg_at_k",
+    "precision_at_k",
+    "recall_at_k",
+]

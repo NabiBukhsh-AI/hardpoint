@@ -224,6 +224,7 @@ class ContextAssembler:
                         reason="duplicate",
                         detail="Identical text was already included.",
                         score=retrieved.score,
+                        document_id=retrieved.chunk.document_id,
                     )
                 )
                 continue
@@ -239,6 +240,7 @@ class ContextAssembler:
                             f"budget with {self.token_budget - used} remaining."
                         ),
                         score=retrieved.score,
+                        document_id=retrieved.chunk.document_id,
                     )
                 )
                 continue

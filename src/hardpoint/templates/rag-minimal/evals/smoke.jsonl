@@ -1,0 +1,10 @@
+{"id": "rotate-key", "query": "How do I rotate an API key?", "expected_document_ids": ["docs:api-keys.md"], "reference_answer": "Create a new key, deploy it everywhere, then revoke the old one.", "tags": ["smoke", "keys"]}
+{"id": "revoked-key", "query": "What happens to requests made with a revoked key?", "expected_document_ids": ["docs:api-keys.md"], "tags": ["smoke", "keys"]}
+{"id": "key-limit", "query": "How many active API keys can a workspace hold?", "expected_document_ids": ["docs:api-keys.md"], "tags": ["keys"]}
+{"id": "invoice-timing", "query": "When are invoices issued and when are they payable?", "expected_document_ids": ["docs:billing.md"], "tags": ["smoke", "billing"]}
+{"id": "refunds", "query": "Can I get a refund for unused prepaid credit?", "expected_document_ids": ["docs:billing.md"], "tags": ["billing"]}
+{"id": "failed-payment", "query": "What happens when a card payment fails?", "expected_document_ids": ["docs:billing.md"], "tags": ["billing"]}
+{"id": "rate-limited", "query": "What should my client do after a 429 rate limit response?", "expected_document_ids": ["docs:rate-limits.md"], "tags": ["smoke", "limits"]}
+{"id": "default-limits", "query": "How many requests per minute does a workspace get by default?", "expected_document_ids": ["docs:rate-limits.md"], "tags": ["limits"]}
+{"id": "audit-retention", "query": "How long are audit logs retained?", "expected_document_ids": ["docs:data-retention.txt"], "tags": ["smoke", "retention"]}
+{"id": "workspace-deletion", "query": "What happens to my data when a workspace is deleted?", "expected_document_ids": ["docs:data-retention.txt"], "tags": ["retention"]}

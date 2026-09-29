@@ -20,3 +20,7 @@ jobs:
         run: hardpoint --env offline doctor
       - name: Tests (offline fakes, no keys, no network)
         run: pytest -q
+      - name: Quality gate
+        run: |
+          hardpoint --env offline ingest run
+          hardpoint --env offline eval run --suite smoke

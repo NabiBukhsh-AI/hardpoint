@@ -55,6 +55,9 @@ carries a migration note here.
   project's pipeline.
 - Generated projects inherited the template checkout's line endings; they are
   now LF everywhere.
+- The groundedness check split a citation written after the full stop
+  (`... the old key. [1]`) from its sentence, so correctly cited answers were
+  flagged as ungrounded.
 
 ### Added
 
@@ -208,5 +211,24 @@ carries a migration note here.
 - The M2 Definition of Done as a test: a generated service under concurrent
   load streams, nests traces correctly, prices every request and leaks no
   sessions, files or tasks.
+- Evaluation (M3): `EvalCase` datasets as JSONL with `source:path` document
+  references; deterministic hit rate, precision, recall, MRR, nDCG and context
+  precision; `Judge` for faithfulness and answer relevance, recording the judge
+  model, prompt version and temperature on every score; `EvalRunner`, which
+  builds through the project's own pipeline factory and answers through
+  `answer_query`; operational metrics (p50/p95 latency, cost, degradation,
+  abstention and error rates); committed baselines and a gate that fails with a
+  per-case regression table; JSON and Markdown reports.
+- `testing.cassettes`: record and replay for language models (generate and
+  stream), embeddings and index queries, so a suite replays with zero provider
+  calls.
+- `hardpoint eval run`, with `--max-cost` refusing to start above -- or without --
+  an estimate, `--cassettes record|replay`, `--update-baseline`, `--tag`, and the
+  report added to the GitHub job summary.
+- Both templates ship `evals/smoke.jsonl`, a committed baseline, judge prompts
+  and the gate in their CI.
+- The M3 Definition of Done as tests: `top_k=1` fails the gate with a per-case
+  diff, restoring passes, and a recorded suite replays after its provider is gone.
+- `DropRecord.document_id`, so document-level metrics count dropped chunks.
 
 [Unreleased]: https://github.com/NabiBukhsh-AI/hardpoint/compare/HEAD...HEAD

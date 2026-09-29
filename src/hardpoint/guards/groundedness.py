@@ -38,6 +38,7 @@ __all__ = ["GroundednessGuard", "GroundednessGuardConfig", "build", "claims", "g
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 _CITATION = re.compile(r"\[([^\[\]\n]{1,40})\]")
+_CITATION_ONLY = re.compile(r"^(\[[^\[\]\n]{1,40}\]\s*[.!?]?\s*)+$")
 _WORD = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
     [
@@ -87,9 +88,19 @@ _STOPWORDS = frozenset(
 
 
 def claims(text: str, *, min_words: int = 4) -> list[str]:
-    """Split an answer into claim sentences, ignoring fragments."""
-    parts = (part.strip() for part in _SENTENCE.split(text))
-    return [part for part in parts if len(_WORD.findall(part.lower())) >= min_words]
+    """Split an answer into claim sentences, ignoring fragments.
+
+    A citation written after the full stop -- ``"... the old key. [1]"`` -- is
+    attached to the sentence before it; split off on its own, it would leave
+    that sentence looking uncited.
+    """
+    merged: list[str] = []
+    for part in (part.strip() for part in _SENTENCE.split(text)):
+        if merged and part and _CITATION_ONLY.match(part):
+            merged[-1] = f"{merged[-1]} {part}"
+        elif part:
+            merged.append(part)
+    return [part for part in merged if len(_WORD.findall(part.lower())) >= min_words]
 
 
 def _content_words(text: str) -> set[str]:
